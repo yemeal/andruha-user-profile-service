@@ -333,20 +333,77 @@ class TestCommandsDTO:
                 user_id=user_id, expected_version=2, avatar_key="a" * 513
             )
 
+    def test_create_default_profile_command_naive_datetime_rejected(self) -> None:
+        """Проверка, что наивные даты (без tzinfo) отклоняются."""
+        user_id = uuid.uuid4()
+        naive_dt = datetime(2026, 8, 21, 5, 0, 0)  # no timezone
+        with pytest.raises(ValidationError):
+            CreateDefaultProfileCommand(
+                user_id=user_id,
+                registered_at=naive_dt,
+            )
+
     def test_update_settings_command(self) -> None:
         user_id = uuid.uuid4()
         cmd = UpdateSettingsCommand(
             user_id=user_id,
             expected_version=3,
-            theme="dark",
-            locale="ru",
+            theme=Theme.DARK,
+            locale=Locale.RU,
             timezone="Europe/Moscow",
-            who_can_see_avatar="ALL",
-            who_can_find_by_username="NOBODY",
-            who_can_see_bio="ALL",
+            who_can_see_avatar=PrivacyScope.ALL,
+            who_can_find_by_username=PrivacyScope.NOBODY,
+            who_can_see_bio=PrivacyScope.ALL,
         )
-        assert cmd.theme == "dark"
-        assert cmd.who_can_find_by_username == "NOBODY"
+        assert cmd.theme == Theme.DARK
+        assert cmd.locale == Locale.RU
+        assert cmd.who_can_find_by_username == PrivacyScope.NOBODY
+
+    def test_update_settings_command_raw_string_enum_coercion(self) -> None:
+        """Проверка автоматической десериализации строковых Enum из HTTP JSON."""
+        user_id_str = "01912a75-7b23-74e2-8951-40be317130a1"
+        data = {
+            "user_id": user_id_str,
+            "expected_version": 2,
+            "theme": "dark",
+            "locale": "ru",
+            "who_can_see_avatar": "ALL",
+            "who_can_find_by_username": "NOBODY",
+        }
+        cmd = UpdateSettingsCommand.model_validate(data)
+        assert cmd.theme == Theme.DARK
+        assert cmd.locale == Locale.RU
+        assert cmd.who_can_see_avatar == PrivacyScope.ALL
+        assert cmd.who_can_find_by_username == PrivacyScope.NOBODY
+
+    @pytest.mark.parametrize(
+        ("field_name", "invalid_value"),
+        [
+            ("theme", "neon"),
+            ("theme", "DARK"),  # case-sensitive: theme is lowercase
+            ("locale", "fr"),
+            ("who_can_see_avatar", "EVERYBODY"),
+            ("who_can_find_by_username", "FRIENDS"),
+        ],
+    )
+    def test_update_settings_command_invalid_enum_strings(
+        self, field_name: str, invalid_value: str
+    ) -> None:
+        """Отклонение недопустимых строковых Enum на границе DTO."""
+        user_id = uuid.uuid4()
+        with pytest.raises(ValidationError):
+            UpdateSettingsCommand.model_validate({
+                "user_id": str(user_id),
+                "expected_version": 1,
+                field_name: invalid_value,
+            })
+
+    def test_empty_patch_command_non_none_fields(self) -> None:
+        """Проверка сценария пустого PATCH (no-op): non_none_fields возвращает пустой словарь."""
+        user_id = uuid.uuid4()
+        cmd = UpdateProfileCommand(user_id=user_id, expected_version=1)
+        patch_payload = cmd.non_none_fields(exclude={"user_id", "expected_version"})
+        assert patch_payload == {}
 
     def test_reset_settings_command_valid(self) -> None:
         user_id = uuid.uuid4()
