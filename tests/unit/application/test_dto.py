@@ -320,23 +320,24 @@ class TestQueriesDTO:
         assert query.user_id == user_id
         assert query.viewer_id == viewer_id
 
-    def test_search_by_username_query_boundary_lengths(self) -> None:
-        # Ровно 3 символа — валидная нижняя граница
-        q_min = SearchByUsernameQuery(username="abc")
-        assert q_min.username == "abc"
+    @pytest.mark.parametrize("valid_username", ["abc", "a" * 32, "user_123"])
+    def test_search_by_username_query_valid_boundary_lengths(
+        self, valid_username: str
+    ) -> None:
+        """Проверка валидных граничных длин никнейма (3 символа, 32 символа)."""
+        query = SearchByUsernameQuery(username=valid_username)
+        assert query.username == valid_username
 
-        # Ровно 32 символа — валидная верхняя граница
-        max_username = "a" * 32
-        q_max = SearchByUsernameQuery(username=max_username)
-        assert q_max.username == max_username
-
-        # Меньше 3 символов — ошибка
+    @pytest.mark.parametrize(
+        "invalid_username",
+        ["", "a", "ab", "a" * 33, "a" * 50],
+    )
+    def test_search_by_username_query_invalid_boundary_lengths(
+        self, invalid_username: str
+    ) -> None:
+        """Проверка выхода за границы длины никнейма (< 3 и > 32 символов)."""
         with pytest.raises(ValidationError):
-            SearchByUsernameQuery(username="ab")
-
-        # Больше 32 символов — ошибка
-        with pytest.raises(ValidationError):
-            SearchByUsernameQuery(username="a" * 33)
+            SearchByUsernameQuery(username=invalid_username)
 
     def test_search_by_username_query_string_coercion(self) -> None:
         viewer_id_str = "01912a75-7b23-74e2-8951-40be317130a1"
