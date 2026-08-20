@@ -261,6 +261,53 @@ class TestCommandsDTO:
                 expected_version=invalid_ver,
             )
 
+    @pytest.mark.parametrize(
+        ("display_name", "bio", "username"),
+        [
+            ("A", "", "abc"),
+            ("A" * 64, "B" * 255, "a" * 32),
+            (None, None, None),
+        ],
+    )
+    def test_update_profile_command_valid_field_lengths(
+        self,
+        display_name: str | None,
+        bio: str | None,
+        username: str | None,
+    ) -> None:
+        user_id = uuid.uuid4()
+        cmd = UpdateProfileCommand(
+            user_id=user_id,
+            expected_version=1,
+            display_name=display_name,
+            bio=bio,
+            username=username,
+        )
+        assert cmd.display_name == display_name
+        assert cmd.bio == bio
+        assert cmd.username == username
+
+    @pytest.mark.parametrize(
+        ("field_name", "invalid_value"),
+        [
+            ("display_name", ""),
+            ("display_name", "A" * 65),
+            ("bio", "B" * 256),
+            ("username", "ab"),
+            ("username", "a" * 33),
+        ],
+    )
+    def test_update_profile_command_invalid_field_lengths(
+        self, field_name: str, invalid_value: str
+    ) -> None:
+        user_id = uuid.uuid4()
+        with pytest.raises(ValidationError):
+            UpdateProfileCommand(
+                user_id=user_id,
+                expected_version=1,
+                **{field_name: invalid_value},
+            )
+
     def test_update_avatar_command(self) -> None:
         user_id = uuid.uuid4()
         cmd = UpdateAvatarCommand(
@@ -276,6 +323,15 @@ class TestCommandsDTO:
             avatar_key=None,
         )
         assert cmd_delete.avatar_key is None
+
+        # Invalid lengths
+        with pytest.raises(ValidationError):
+            UpdateAvatarCommand(user_id=user_id, expected_version=2, avatar_key="")
+
+        with pytest.raises(ValidationError):
+            UpdateAvatarCommand(
+                user_id=user_id, expected_version=2, avatar_key="a" * 513
+            )
 
     def test_update_settings_command(self) -> None:
         user_id = uuid.uuid4()

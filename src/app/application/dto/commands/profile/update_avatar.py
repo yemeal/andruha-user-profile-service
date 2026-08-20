@@ -19,5 +19,7 @@ class UpdateAvatarCommand(BaseCommand):
     )
     avatar_key: str | None = Field(
         default=None,
+        min_length=1,
+        max_length=512,
         description="Ключ к аватару в объектном хранилище (None для удаления)",
     )
