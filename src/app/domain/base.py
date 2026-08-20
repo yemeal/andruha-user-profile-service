@@ -66,6 +66,14 @@ class MutableEntity(Entity):
 class VersionedMutableEntity(MutableEntity):
     """
     Изменяемая сущность с поддержкой версионирования для оптимистической блокировки (OCC).
+
+    Архитектурные особенности поля version:
+    1. frozen=True: защищает номер версии от случайного прямого изменения извне
+       (попытка присвоения вызовет ValidationError).
+    2. Поддерживает прозрачную загрузку (гидратацию) из БД через model_validate
+       как из словарей (SQL/asyncpg), так и из ORM-моделей (SQLAlchemy).
+    3. Мутация версии осуществляется строго через метод increment_version(),
+       вызываемый автоматически внутри mark_updated(now).
     """
 
     version: int = Field(
@@ -78,6 +86,7 @@ class VersionedMutableEntity(MutableEntity):
     def increment_version(self) -> None:
         """
         Инкрементирует номер версии сущности при успешной мутации состояния.
+        Использует object.__setattr__ для безопасного обхода frozen=True внутри агрегата.
         """
         object.__setattr__(self, "version", self.version + 1)
 
