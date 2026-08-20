@@ -2,15 +2,16 @@
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 from app.domain.aggregates import UserProfile, UserProfileStatus, UserSettings
 from app.domain.exceptions import (
     InvalidBioError,
     InvalidDisplayNameError,
     InvalidTimestampError,
-    InvalidVersionError,
     ReservedUsernameError,
 )
 from app.domain.value_objects.display_name import DEFAULT_DISPLAY_NAME
@@ -243,11 +244,16 @@ class TestUserProfileAggregate:
 
     @pytest.mark.parametrize("invalid_version", [0, -1, -100])
     def test_version_cannot_be_zero_or_negative(self, invalid_version: int) -> None:
-        with pytest.raises(InvalidVersionError):
+        with pytest.raises(ValidationError):
             UserProfile(
                 user_id=uuid.uuid4(),
                 version=invalid_version,
             )
+
+    def test_user_profile_version_is_frozen(self) -> None:
+        profile = UserProfile(user_id=uuid.uuid4())
+        with pytest.raises(ValidationError):
+            profile.version = 10
 
     def test_updated_at_must_be_strictly_greater_than_created_at(self) -> None:
         t0 = datetime.now(UTC)
@@ -268,6 +274,75 @@ class TestUserProfileAggregate:
                 created_at=t0,
                 updated_at=t0,
             )
+
+    def test_hydrate_user_profile_from_database_record(self) -> None:
+        user_id = uuid.uuid4()
+        t0 = datetime.now(UTC) - timedelta(days=5)
+        t1 = datetime.now(UTC) - timedelta(days=1)
+
+        # 1. Загрузка из словаря базы данных (например asyncpg / RAW SQL)
+        db_record = {
+            "user_id": user_id,
+            "username": "alex_expert",
+            "display_name": "Alex Expert",
+            "bio": "Database Engineer",
+            "avatar_key": "avatars/alex.png",
+            "status": "ACTIVE",
+            "is_verified": True,
+            "version": 42,
+            "created_at": t0,
+            "updated_at": t1,
+        }
+
+        profile = UserProfile.model_validate(db_record)
+        assert profile.id == user_id
+        assert profile.user_id == user_id
+        assert profile.username == "alex_expert"
+        assert profile.display_name == "Alex Expert"
+        assert profile.bio == "Database Engineer"
+        assert profile.avatar_key == "avatars/alex.png"
+        assert profile.status == UserProfileStatus.ACTIVE
+        assert profile.is_verified is True
+        assert profile.version == 42
+        assert profile.created_at == t0
+        assert profile.updated_at == t1
+
+        # Поле version заморожено от случайной мутации
+        with pytest.raises(ValidationError):
+            profile.version = 43
+
+        # Доменная мутация корректно инкрементирует версию с 42 до 43
+        t2 = datetime.now(UTC)
+        profile.update_profile(display_name="Senior Alex", now=t2)
+        assert profile.display_name == "Senior Alex"
+        assert profile.version == 43
+        assert profile.updated_at == t2
+
+    def test_hydrate_user_profile_from_orm_model(self) -> None:
+        user_id = uuid.uuid4()
+        t0 = datetime.now(UTC) - timedelta(days=2)
+        t1 = datetime.now(UTC) - timedelta(hours=3)
+
+        # 2. Загрузка из SQLAlchemy ORM-модели (объект с атрибутами)
+        orm_mock = SimpleNamespace(
+            id=user_id,
+            username="orm_user",
+            display_name="ORM User",
+            bio=None,
+            avatar_key=None,
+            status=UserProfileStatus.ACTIVE,
+            is_verified=False,
+            version=15,
+            created_at=t0,
+            updated_at=t1,
+        )
+
+        profile = UserProfile.model_validate(orm_mock)
+        assert profile.id == user_id
+        assert profile.username == "orm_user"
+        assert profile.version == 15
+        assert profile.created_at == t0
+        assert profile.updated_at == t1
 
 
 class TestUserSettingsAggregate:
@@ -382,11 +457,16 @@ class TestUserSettingsAggregate:
     def test_settings_version_cannot_be_zero_or_negative(
         self, invalid_version: int
     ) -> None:
-        with pytest.raises(InvalidVersionError):
+        with pytest.raises(ValidationError):
             UserSettings(
                 user_id=uuid.uuid4(),
                 version=invalid_version,
             )
+
+    def test_user_settings_version_is_frozen(self) -> None:
+        settings = UserSettings(user_id=uuid.uuid4())
+        with pytest.raises(ValidationError):
+            settings.version = 10
 
     def test_settings_updated_at_must_be_strictly_greater_than_created_at(self) -> None:
         t0 = datetime.now(UTC)
@@ -398,3 +478,71 @@ class TestUserSettingsAggregate:
                 created_at=t0,
                 updated_at=t_before,
             )
+
+    def test_hydrate_user_settings_from_database_record(self) -> None:
+        user_id = uuid.uuid4()
+        t0 = datetime.now(UTC) - timedelta(days=10)
+        t1 = datetime.now(UTC) - timedelta(days=2)
+
+        # 1. Загрузка из словаря базы данных
+        db_record = {
+            "user_id": user_id,
+            "theme": "dark",
+            "locale": "en",
+            "timezone": "Asia/Almaty",
+            "privacy": {
+                "who_can_see_avatar": "ALL",
+                "who_can_find_by_username": "NOBODY",
+                "who_can_see_bio": "ALL",
+            },
+            "version": 8,
+            "created_at": t0,
+            "updated_at": t1,
+        }
+
+        settings = UserSettings.model_validate(db_record)
+        assert settings.id == user_id
+        assert settings.user_id == user_id
+        assert settings.theme == Theme.DARK
+        assert settings.locale == Locale.EN
+        assert settings.timezone == "Asia/Almaty"
+        assert settings.privacy.who_can_see_avatar == PrivacyScope.ALL
+        assert settings.privacy.who_can_find_by_username == PrivacyScope.NOBODY
+        assert settings.privacy.who_can_see_bio == PrivacyScope.ALL
+        assert settings.version == 8
+        assert settings.created_at == t0
+        assert settings.updated_at == t1
+
+        # Поле version защищено от прямого присвоения
+        with pytest.raises(ValidationError):
+            settings.version = 9
+
+        # Доменная мутация инкрементирует версию с 8 до 9
+        t2 = datetime.now(UTC)
+        settings.update_settings(theme=Theme.LIGHT, now=t2)
+        assert settings.theme == Theme.LIGHT
+        assert settings.version == 9
+        assert settings.updated_at == t2
+
+    def test_hydrate_user_settings_from_orm_model(self) -> None:
+        user_id = uuid.uuid4()
+        t0 = datetime.now(UTC) - timedelta(days=1)
+        t1 = datetime.now(UTC)
+
+        # 2. Загрузка из SQLAlchemy ORM-модели
+        orm_mock = SimpleNamespace(
+            id=user_id,
+            theme=Theme.SYSTEM,
+            locale=Locale.EN,
+            timezone="UTC",
+            privacy=PrivacySettings.default(),
+            version=99,
+            created_at=t0,
+            updated_at=t1,
+        )
+
+        settings = UserSettings.model_validate(orm_mock)
+        assert settings.id == user_id
+        assert settings.theme == Theme.SYSTEM
+        assert settings.locale == Locale.EN
+        assert settings.version == 99

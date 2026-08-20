@@ -1,7 +1,6 @@
 from app.domain.exceptions.base import (
     DomainError,
     InvalidTimestampError,
-    InvalidVersionError,
 )
 from app.domain.exceptions.user_profile import (
     InvalidBioError,
@@ -35,7 +34,6 @@ __all__ = [
     "InvalidTimestampError",
     "InvalidTimezoneError",
     "InvalidUsernameError",
-    "InvalidVersionError",
     "ProfileVersionMismatchError",
     "ReservedUsernameError",
     "UserProfileError",

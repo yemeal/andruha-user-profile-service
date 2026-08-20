@@ -4,13 +4,14 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from pydantic import ValidationError
 
 from app.domain.base import (
     Entity,
     MutableEntity,
     VersionedMutableEntity,
 )
-from app.domain.exceptions import InvalidTimestampError, InvalidVersionError
+from app.domain.exceptions import InvalidTimestampError
 
 
 class DummyEntity(Entity):
@@ -71,12 +72,21 @@ def test_versioned_mutable_entity_has_version_and_validates_it() -> None:
     assert versioned.version == 1
     assert versioned.updated_at is None
 
-    # Невалидные версии вызывают InvalidVersionError
-    with pytest.raises(InvalidVersionError):
+    # Невалидные версии (0 или отрицательные) отклоняются валидатором ge=1
+    with pytest.raises(ValidationError):
         DummyVersionedEntity(name="versioned1", version=0)
 
-    with pytest.raises(InvalidVersionError):
+    with pytest.raises(ValidationError):
         DummyVersionedEntity(name="versioned1", version=-5)
+
+
+def test_versioned_mutable_entity_version_is_frozen() -> None:
+    versioned = DummyVersionedEntity(name="versioned1")
+    assert versioned.version == 1
+
+    # Прямое присвоение версии запрещено (frozen=True)
+    with pytest.raises(ValidationError):
+        versioned.version = 5
 
 
 def test_versioned_mutable_entity_increment_version() -> None:

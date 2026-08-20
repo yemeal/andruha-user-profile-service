@@ -10,12 +10,6 @@ class DomainError(Exception):
         super().__init__(self.default_message)
 
 
-class InvalidVersionError(DomainError):
-    """Версия сущности должна быть строго положительным числом (>= 1)."""
-
-    default_message: ClassVar[str] = "Version must be greater than or equal to 1"
-
-
 class InvalidTimestampError(DomainError):
     """Время обновления (updated_at) должно быть строго позже времени создания (created_at)."""
 

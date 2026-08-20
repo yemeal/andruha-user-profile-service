@@ -5,7 +5,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.clock import utc_now
-from app.domain.exceptions.base import InvalidTimestampError, InvalidVersionError
+from app.domain.exceptions.base import InvalidTimestampError
 
 
 class DomainModel(BaseModel):
@@ -70,20 +70,16 @@ class VersionedMutableEntity(MutableEntity):
 
     version: int = Field(
         default=1,
-        description="Номер версии сущности для оптимистической блокировки (начиная с 1)",
+        ge=1,
+        frozen=True,
+        description="Номер версии сущности (только для чтения, инкрементируется через mark_updated)",
     )
-
-    @model_validator(mode="after")
-    def _validate_version(self) -> Self:
-        if self.version < 1:
-            raise InvalidVersionError()
-        return self
 
     def increment_version(self) -> None:
         """
         Инкрементирует номер версии сущности при успешной мутации состояния.
         """
-        self.version += 1
+        object.__setattr__(self, "version", self.version + 1)
 
     def mark_updated(self, now: datetime) -> None:
         """
