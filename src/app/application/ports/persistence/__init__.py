@@ -1,17 +1,17 @@
-from app.application.ports.deduplication import EventDeduplicationPort
-from app.application.ports.persistence import (
-    AsyncRepositoryProtocol,
-    AsyncUOWProtocol,
+from app.application.ports.persistence.readers import (
     ProfileReaderProtocol,
-    ProfileRepositoryProtocol,
     SettingsReaderProtocol,
+)
+from app.application.ports.persistence.repositories import (
+    AsyncRepositoryProtocol,
+    ProfileRepositoryProtocol,
     SettingsRepositoryProtocol,
 )
+from app.application.ports.persistence.unit_of_work import AsyncUOWProtocol
 
 __all__ = [
     "AsyncRepositoryProtocol",
     "AsyncUOWProtocol",
-    "EventDeduplicationPort",
     "ProfileReaderProtocol",
     "ProfileRepositoryProtocol",
     "SettingsReaderProtocol",

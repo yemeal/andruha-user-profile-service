@@ -1,7 +1,7 @@
 """Unit tests for Domain Policies (ProfilePrivacyPolicy)."""
 
-from datetime import UTC, datetime, timedelta
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 

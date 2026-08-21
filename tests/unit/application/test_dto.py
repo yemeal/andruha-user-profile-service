@@ -6,21 +6,30 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from app.application.dto import (
-    CheckProfileExistsQuery,
+from app.application.commands import (
+    BaseCommand,
     CreateDefaultProfileCommand,
+    ResetSettingsCommand,
+    UpdateAvatarCommand,
+    UpdateProfileCommand,
+    UpdateSettingsCommand,
+)
+from app.application.queries import (
+    BaseQuery,
+    BaseQueryResult,
+    BaseResponse,
+    CheckProfileExistsQuery,
     GetBatchProfilesQuery,
     GetMyProfileQuery,
     GetMySettingsQuery,
     GetPublicProfileQuery,
+    MyProfileResult,
+    MySettingsResult,
     ProfileDTO,
     PublicProfileDTO,
-    ResetSettingsCommand,
+    PublicProfileResult,
     SearchByUsernameQuery,
     SettingsDTO,
-    UpdateAvatarCommand,
-    UpdateProfileCommand,
-    UpdateSettingsCommand,
 )
 from app.domain.aggregates import UserProfile, UserSettings
 from app.domain.value_objects import (
