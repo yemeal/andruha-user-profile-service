@@ -1,8 +1,12 @@
+from typing import Self
 import uuid
 
 from pydantic import Field
 
 from app.application.dto.base import BaseResponse
+from app.domain.aggregates.profiles import UserProfile
+from app.domain.aggregates.settings import UserSettings
+from app.domain.policies.privacy import ProfilePrivacyPolicy
 
 
 class PublicProfileDTO(BaseResponse):
@@ -33,3 +37,32 @@ class PublicProfileDTO(BaseResponse):
     is_verified: bool = Field(
         description="Флаг верификации профиля",
     )
+
+    @classmethod
+    def from_domain_with_policy(
+        cls,
+        profile: UserProfile,
+        settings: UserSettings,
+        viewer_id: uuid.UUID | None = None,
+    ) -> Self:
+        """
+        Фабричный метод создания публичного DTO с применением доменной политики приватности.
+        """
+        can_bio = ProfilePrivacyPolicy.can_view_bio(
+            target_user_id=profile.id,
+            settings=settings,
+            viewer_id=viewer_id,
+        )
+        can_avatar = ProfilePrivacyPolicy.can_view_avatar(
+            target_user_id=profile.id,
+            settings=settings,
+            viewer_id=viewer_id,
+        )
+        return cls(
+            user_id=profile.id,
+            username=str(profile.username) if profile.username else None,
+            display_name=str(profile.display_name),
+            bio=str(profile.bio) if (profile.bio and can_bio) else None,
+            avatar_key=profile.avatar_key if can_avatar else None,
+            is_verified=profile.is_verified,
+        )

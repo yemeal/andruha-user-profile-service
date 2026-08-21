@@ -543,6 +543,77 @@ class TestResponsesDTO:
         assert dto.created_at == created_at
         assert dto.updated_at == updated_at
 
+    def test_public_profile_dto_from_domain_with_policy_owner_sees_all(self) -> None:
+        user_id = uuid.uuid4()
+        created_at = datetime.now(UTC)
+        profile = UserProfile.create_default(user_id=user_id, now=created_at)
+        updated_at = created_at + timedelta(seconds=5)
+        profile.update_profile(
+            display_name=DisplayName("Alex"),
+            bio=Bio("Secret bio"),
+            username=Username("alex_sec"),
+            now=updated_at,
+        )
+        profile.update_avatar(avatar_key="avatars/secret.png", now=updated_at)
+
+        settings = UserSettings.create_default(user_id=user_id, now=created_at)
+        settings.update_settings(
+            privacy=PrivacySettings(
+                who_can_see_avatar=PrivacyScope.NOBODY,
+                who_can_find_by_username=PrivacyScope.NOBODY,
+                who_can_see_bio=PrivacyScope.NOBODY,
+            ),
+            now=updated_at,
+        )
+
+        # Владелец видит свои секретные био и аватар
+        dto = PublicProfileDTO.from_domain_with_policy(
+            profile=profile,
+            settings=settings,
+            viewer_id=user_id,
+        )
+        assert dto.bio == "Secret bio"
+        assert dto.avatar_key == "avatars/secret.png"
+        assert dto.display_name == "Alex"
+        assert dto.username == "alex_sec"
+
+    def test_public_profile_dto_from_domain_with_policy_external_viewer_masked(
+        self,
+    ) -> None:
+        user_id = uuid.uuid4()
+        external_viewer = uuid.uuid4()
+        created_at = datetime.now(UTC)
+        profile = UserProfile.create_default(user_id=user_id, now=created_at)
+        updated_at = created_at + timedelta(seconds=5)
+        profile.update_profile(
+            display_name=DisplayName("Alex"),
+            bio=Bio("Secret bio"),
+            username=Username("alex_sec"),
+            now=updated_at,
+        )
+        profile.update_avatar(avatar_key="avatars/secret.png", now=updated_at)
+
+        settings = UserSettings.create_default(user_id=user_id, now=created_at)
+        settings.update_settings(
+            privacy=PrivacySettings(
+                who_can_see_avatar=PrivacyScope.NOBODY,
+                who_can_find_by_username=PrivacyScope.ALL,
+                who_can_see_bio=PrivacyScope.NOBODY,
+            ),
+            now=updated_at,
+        )
+
+        # Посторонний зритель видит None для bio и avatar_key из-за NOBODY
+        dto = PublicProfileDTO.from_domain_with_policy(
+            profile=profile,
+            settings=settings,
+            viewer_id=external_viewer,
+        )
+        assert dto.bio is None
+        assert dto.avatar_key is None
+        assert dto.display_name == "Alex"
+        assert dto.username == "alex_sec"
+
     def test_public_profile_dto(self) -> None:
         user_id = uuid.uuid4()
         dto = PublicProfileDTO(
