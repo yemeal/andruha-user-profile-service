@@ -7,27 +7,21 @@ import pytest
 from pydantic import ValidationError
 
 from app.application.commands import (
-    BaseCommand,
     CreateDefaultProfileCommand,
     ResetSettingsCommand,
     UpdateAvatarCommand,
     UpdateProfileCommand,
     UpdateSettingsCommand,
 )
+from app.application.dto import BaseDTO
 from app.application.queries import (
-    BaseQuery,
-    BaseQueryResult,
-    BaseResponse,
     CheckProfileExistsQuery,
     GetBatchProfilesQuery,
     GetMyProfileQuery,
     GetMySettingsQuery,
     GetPublicProfileQuery,
-    MyProfileResult,
-    MySettingsResult,
     ProfileDTO,
     PublicProfileDTO,
-    PublicProfileResult,
     SearchByUsernameQuery,
     SettingsDTO,
 )
@@ -95,12 +89,14 @@ class TestBaseDTOClasses:
         profile = UserProfile.create_default(user_id=user_id, now=now)
 
         dto = ProfileDTO.from_domain(profile)
+        assert isinstance(dto, BaseDTO)
         assert dto.user_id == user_id
         assert dto.display_name == "Пользователь"
         assert dto.version == 1
 
         settings = UserSettings.create_default(user_id=user_id, now=now)
         settings_dto = SettingsDTO.from_domain(settings)
+        assert isinstance(settings_dto, BaseDTO)
         assert settings_dto.user_id == user_id
         assert settings_dto.theme == Theme.SYSTEM
 
@@ -236,10 +232,12 @@ class TestCommandsDTO:
 
     def test_create_default_profile_command_invalid_uuid(self) -> None:
         with pytest.raises(ValidationError):
-            CreateDefaultProfileCommand.model_validate({
-                "user_id": "not-a-valid-uuid",
-                "registered_at": datetime.now(UTC).isoformat(),
-            })
+            CreateDefaultProfileCommand.model_validate(
+                {
+                    "user_id": "not-a-valid-uuid",
+                    "registered_at": datetime.now(UTC).isoformat(),
+                }
+            )
 
     def test_update_profile_command_valid(self) -> None:
         user_id = uuid.uuid4()
@@ -401,11 +399,13 @@ class TestCommandsDTO:
         """Отклонение недопустимых строковых Enum на границе DTO."""
         user_id = uuid.uuid4()
         with pytest.raises(ValidationError):
-            UpdateSettingsCommand.model_validate({
-                "user_id": str(user_id),
-                "expected_version": 1,
-                field_name: invalid_value,
-            })
+            UpdateSettingsCommand.model_validate(
+                {
+                    "user_id": str(user_id),
+                    "expected_version": 1,
+                    field_name: invalid_value,
+                }
+            )
 
     def test_empty_patch_command_non_none_fields(self) -> None:
         """Проверка сценария пустого PATCH (no-op): non_none_fields возвращает пустой словарь."""

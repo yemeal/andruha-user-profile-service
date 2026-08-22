@@ -3,10 +3,11 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 
-class BaseCommand(BaseModel):
+class BaseCommand[ResultT](BaseModel):
     """
     Базовая команда на изменение состояния системы (Command).
     Всегда неизменяема (frozen=True) и строго запрещает лишние поля (extra='forbid').
+    Параметризована типом ожидаемого результата ResultT (обязательно указывать).
     """
 
     model_config = ConfigDict(

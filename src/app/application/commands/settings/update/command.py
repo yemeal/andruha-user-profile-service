@@ -3,12 +3,13 @@ import uuid
 from pydantic import Field
 
 from app.application.commands.base import BaseCommand
+from app.application.dto.settings import SettingsDTO
 from app.domain.value_objects.locale import Locale
 from app.domain.value_objects.privacy import PrivacyScope
 from app.domain.value_objects.theme import Theme
 
 
-class UpdateSettingsCommand(BaseCommand):
+class UpdateSettingsCommand(BaseCommand[SettingsDTO]):
     """
     Команда обновления настроек интерфейса и приватности пользователя.
     """

@@ -254,4 +254,3 @@ class TestUserProfileStatusValueObject:
     def test_invalid_status_raises_error(self) -> None:
         with pytest.raises(InvalidProfileStatusError):
             UserProfileStatus("UNKNOWN_STATUS")
-

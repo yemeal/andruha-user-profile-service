@@ -13,4 +13,6 @@ class DomainError(Exception):
 class InvalidTimestampError(DomainError):
     """Время обновления (updated_at) должно быть строго позже времени создания (created_at)."""
 
-    default_message: ClassVar[str] = "updated_at must be strictly greater than created_at"
+    default_message: ClassVar[str] = (
+        "updated_at must be strictly greater than created_at"
+    )

@@ -6,6 +6,12 @@ from app.application.commands import (
     UpdateProfileCommand,
     UpdateSettingsCommand,
 )
+from app.application.dto import (
+    BaseDTO,
+    ProfileDTO,
+    PublicProfileDTO,
+    SettingsDTO,
+)
 from app.application.ports import (
     AsyncRepositoryProtocol,
     AsyncUOWProtocol,
@@ -26,17 +32,15 @@ from app.application.queries import (
     GetPublicProfileQuery,
     MyProfileResult,
     MySettingsResult,
-    ProfileDTO,
-    PublicProfileDTO,
     PublicProfileResult,
     SearchByUsernameQuery,
-    SettingsDTO,
 )
 
 __all__ = [
     "AsyncRepositoryProtocol",
     "AsyncUOWProtocol",
     "BaseCommand",
+    "BaseDTO",
     "BaseQuery",
     "BaseQueryResult",
     "BaseResponse",

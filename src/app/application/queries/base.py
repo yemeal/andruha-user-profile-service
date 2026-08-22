@@ -1,6 +1,8 @@
-from typing import Any, Self
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
+
+from app.application.dto.base import BaseDTO
 
 
 class BaseQuery(BaseModel):
@@ -21,25 +23,6 @@ class BaseQuery(BaseModel):
         return self.model_dump()
 
 
-class BaseQueryResult(BaseModel):
-    """
-    Базовая модель результата запроса на чтение (Read Model / Result / Projection).
-    Поддерживает неизменяемость и бесшовную гидратацию из доменных сущностей.
-    """
-
-    model_config = ConfigDict(
-        frozen=True,
-        from_attributes=True,
-        populate_by_name=True,
-    )
-
-    @classmethod
-    def from_domain(cls, entity: Any) -> Self:
-        """
-        Построение DTO/Result ответа из доменной сущности или агрегата.
-        """
-        return cls.model_validate(entity)
-
-
-# Для обратной совместимости
-BaseResponse = BaseQueryResult
+# Алиасы для обратной совместимости
+BaseQueryResult = BaseDTO
+BaseResponse = BaseDTO
