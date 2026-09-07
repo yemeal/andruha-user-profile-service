@@ -1,3 +1,6 @@
+from app.application.ports.persistence.readers.base import (
+    AsyncReaderProtocol,
+)
 from app.application.ports.persistence.readers.profiles import (
     ProfileReaderProtocol,
 )
@@ -6,6 +9,7 @@ from app.application.ports.persistence.readers.settings import (
 )
 
 __all__ = [
+    "AsyncReaderProtocol",
     "ProfileReaderProtocol",
     "SettingsReaderProtocol",
 ]
