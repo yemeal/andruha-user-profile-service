@@ -8,7 +8,7 @@ from app.domain.exceptions.user_settings import InvalidTimezoneError
 DEFAULT_TIMEZONE: str = "Europe/Moscow"
 
 
-def _validate_timezone(value: str) -> str:
+def _validate_timezone(value: object) -> str:
     """Валидатор для IANA часового пояса"""
     if not isinstance(value, str):
         raise InvalidTimezoneError()

@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence, Set
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -33,7 +33,9 @@ def compute_request_fingerprint(
     Канонизирует словари, последовательности, множества, Decimal, даты, UUID и Enum.
     Пути к неупорядоченным коллекциям сортируются нечувствительно к порядку элементов.
     """
-    effective_paths = unordered_paths if unordered_paths is not None else frozenset()
+    effective_paths = (
+        unordered_paths if unordered_paths is not None else frozenset[JsonPath]()
+    )
     raw = (
         payload.model_dump(mode="python") if isinstance(payload, BaseModel) else payload
     )
@@ -60,7 +62,7 @@ def _canonicalize(
             unordered_paths=unordered_paths,
         )
     if isinstance(value, Mapping):
-        for key in value:
+        for key in cast(Mapping[object, Any], value):
             if not isinstance(key, str):
                 raise TypeError(
                     "Словари для формирования слепка должны содержать строковые ключи"
@@ -71,7 +73,7 @@ def _canonicalize(
                 path=(*path, key),
                 unordered_paths=unordered_paths,
             )
-            for key, item in sorted(value.items())
+            for key, item in sorted(cast(Mapping[str, Any], value).items())
         }
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         items = [
@@ -80,7 +82,7 @@ def _canonicalize(
                 path=(*path, "[]"),
                 unordered_paths=unordered_paths,
             )
-            for item in value
+            for item in cast(Sequence[Any], value)
         ]
         if path in unordered_paths:
             return sorted(
@@ -96,7 +98,7 @@ def _canonicalize(
     if isinstance(value, Set):
         items = [
             _canonicalize(item, path=(*path, "{}"), unordered_paths=unordered_paths)
-            for item in value
+            for item in cast(Set[Any], value)
         ]
         return sorted(
             items,

@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
 
@@ -38,7 +38,7 @@ def build_postgres_command_bus[DependenciesT](
     """
 
     @asynccontextmanager
-    async def scope() -> AsyncIterator[CommandExecution[DependenciesT]]:
+    async def scope() -> AsyncGenerator[CommandExecution[DependenciesT]]:
         async with sessions() as session:
             uow = SqlAlchemyUnitOfWork(session)
             dependencies = dependencies_factory(session)

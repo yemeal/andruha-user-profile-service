@@ -5,7 +5,7 @@ from pydantic import AfterValidator
 from app.domain.exceptions.user_profile import InvalidBioError
 
 
-def _validate_bio(value: str) -> str:
+def _validate_bio(value: object) -> str:
     """Валидатор для описания профиля (bio)"""
     if not isinstance(value, str):
         raise InvalidBioError()

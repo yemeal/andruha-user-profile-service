@@ -43,7 +43,7 @@ class Username(str):
     - Регистронезависимый (хранится строго в нижнем регистре).
     """
 
-    def __new__(cls, value: str) -> Username:
+    def __new__(cls, value: object) -> Username:
         if not isinstance(value, str):
             raise InvalidUsernameError()
 

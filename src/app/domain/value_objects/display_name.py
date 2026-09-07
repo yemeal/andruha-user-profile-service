@@ -23,7 +23,7 @@ def _contains_emoji(text: str) -> bool:
     return _EMOJI_REGEX.search(text) is not None
 
 
-def _validate_display_name(value: str) -> str:
+def _validate_display_name(value: object) -> str:
     """Валидатор для отображаемого имени пользователя"""
     if not isinstance(value, str):
         raise InvalidDisplayNameError()
