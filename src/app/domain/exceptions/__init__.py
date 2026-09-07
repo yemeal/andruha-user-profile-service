@@ -19,6 +19,7 @@ from app.domain.exceptions.user_settings import (
     InvalidPrivacyScopeError,
     InvalidThemeError,
     InvalidTimezoneError,
+    SettingsVersionMismatchError,
     UserSettingsError,
     UserSettingsNotFoundError,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "InvalidUsernameError",
     "ProfileVersionMismatchError",
     "ReservedUsernameError",
+    "SettingsVersionMismatchError",
     "UserProfileError",
     "UserProfileNotFoundError",
     "UserSettingsError",

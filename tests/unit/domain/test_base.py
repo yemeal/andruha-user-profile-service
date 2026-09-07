@@ -89,15 +89,13 @@ def test_versioned_mutable_entity_version_is_frozen() -> None:
         versioned.version = 5
 
 
-def test_versioned_mutable_entity_increment_version() -> None:
-    versioned = DummyVersionedEntity(name="versioned1")
-    assert versioned.version == 1
-
-    versioned.increment_version()
-    assert versioned.version == 2
-
-    versioned.increment_version()
-    assert versioned.version == 3
+def test_invalid_mark_updated_preserves_version_and_timestamp() -> None:
+    now = datetime.now(UTC)
+    versioned = DummyVersionedEntity(name="item", created_at=now)
+    before = versioned.model_dump()
+    with pytest.raises(InvalidTimestampError):
+        versioned.mark_updated(now)
+    assert versioned.model_dump() == before
 
 
 def test_versioned_mutable_entity_mark_updated() -> None:

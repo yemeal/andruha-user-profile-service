@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -31,10 +31,12 @@ class Entity(DomainModel):
     """
 
     id: uuid.UUID = Field(
+        frozen=True,
         default_factory=uuid.uuid7,
         description="Уникальный идентификатор сущности (UUIDv7)",
     )
     created_at: datetime = Field(
+        frozen=True,
         default_factory=utc_now,
         description="Дата и время создания сущности (UTC)",
     )
@@ -46,6 +48,7 @@ class MutableEntity(Entity):
     """
 
     updated_at: datetime | None = Field(
+        frozen=True,
         default=None,
         description="Дата и время последнего обновления сущности (UTC)",
     )
@@ -56,43 +59,65 @@ class MutableEntity(Entity):
             raise InvalidTimestampError()
         return self
 
+    def _replace_state(self, candidate: Self) -> None:
+        """Применяет уже проверенное состояние без последовательных присваиваний.
+
+        Все потенциальные ошибки валидации возникают при создании candidate,
+        пока исходный объект ещё не изменён. Вложенные значения агрегатов неизменяемы.
+        """
+        object.__setattr__(self, "__dict__", candidate.__dict__.copy())
+        object.__setattr__(
+            self, "__pydantic_fields_set__", candidate.model_fields_set.copy()
+        )
+
     def mark_updated(self, now: datetime) -> None:
-        """
-        Фиксирует факт изменения сущности, обновляя метку времени последнего обновления.
-        """
-        self.updated_at = now
+        candidate = self.__class__.model_validate(
+            {
+                **self.model_dump(),
+                "updated_at": now,
+            }
+        )
+        self._replace_state(candidate)
 
 
 class VersionedMutableEntity(MutableEntity):
-    """
-    Изменяемая сущность с поддержкой версионирования для оптимистической блокировки (OCC).
+    """Версия и время изменяются вместе после проверки полного нового состояния.
 
-    Архитектурные особенности поля version:
-    1. frozen=True: защищает номер версии от случайного прямого изменения извне
-       (попытка присвоения вызовет ValidationError).
-    2. Поддерживает прозрачную загрузку (гидратацию) из БД через model_validate
-       как из словарей (SQL/asyncpg), так и из ORM-моделей (SQLAlchemy).
-    3. Мутация версии осуществляется строго через метод increment_version(),
-       вызываемый автоматически внутри mark_updated(now).
+    Гидратация из БД использует model_validate. При доменном изменении
+    _apply_changes проверяет значения и время, затем заменяет состояние целиком.
+    Проверка версии при конкурентной записи остаётся обязанностью репозитория.
     """
 
     version: int = Field(
         default=1,
         ge=1,
         frozen=True,
-        description="Номер версии сущности (только для чтения, инкрементируется через mark_updated)",
+        description="Номер версии сущности (изменяется вместе с updated_at)",
     )
 
-    def increment_version(self) -> None:
-        """
-        Инкрементирует номер версии сущности при успешной мутации состояния.
-        Использует object.__setattr__ для безопасного обхода frozen=True внутри агрегата.
-        """
-        object.__setattr__(self, "version", self.version + 1)
+    def _apply_changes(self, *, now: datetime, **changes: Any) -> bool:
+        # Сначала валидируем и нормализуем бизнес-поля на отдельном объекте.
+        candidate = self.__class__.model_validate(
+            {
+                **self.model_dump(),
+                **changes,
+            }
+        )
+
+        if candidate == self:
+            return False
+
+        # Даже ошибка времени не должна оставлять частичное изменение.
+        candidate.mark_updated(now)
+        self._replace_state(candidate)
+        return True
 
     def mark_updated(self, now: datetime) -> None:
-        """
-        Фиксирует факт изменения сущности, обновляя метку времени и инкрементируя версию.
-        """
-        super().mark_updated(now)
-        self.increment_version()
+        candidate = self.__class__.model_validate(
+            {
+                **self.model_dump(),
+                "updated_at": now,
+                "version": self.version + 1,
+            }
+        )
+        self._replace_state(candidate)
