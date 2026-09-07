@@ -15,7 +15,6 @@ from app.application.dto import (
 from app.application.ports import (
     AsyncRepositoryProtocol,
     AsyncUOWProtocol,
-    EventDeduplicationPort,
     ProfileReaderProtocol,
     ProfileRepositoryProtocol,
     SettingsReaderProtocol,
@@ -46,7 +45,6 @@ __all__ = [
     "BaseResponse",
     "CheckProfileExistsQuery",
     "CreateDefaultProfileCommand",
-    "EventDeduplicationPort",
     "GetBatchProfilesQuery",
     "GetMyProfileQuery",
     "GetMySettingsQuery",

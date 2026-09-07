@@ -1,4 +1,3 @@
-from app.application.ports.deduplication import EventDeduplicationPort
 from app.application.ports.idempotency import (
     DurableIdempotencyStore,
     HotIdempotencyStore,
@@ -18,7 +17,6 @@ __all__ = [
     "AsyncRepositoryProtocol",
     "AsyncUOWProtocol",
     "DurableIdempotencyStore",
-    "EventDeduplicationPort",
     "HotIdempotencyStore",
     "IdempotencyMetrics",
     "ProfileReaderProtocol",

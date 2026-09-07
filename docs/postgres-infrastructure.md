@@ -4,14 +4,12 @@ The domain aggregates and value objects are the source of truth. This schema fol
 
 ## Available components
 
-- `database/models`: profiles, user_settings and consumer-scoped processed_events.
+- `database/models`: profiles and user_settings.
 - `database/metadata.py`: complete metadata including durable idempotency.
 - `database/repositories.py`: detached aggregate reads, atomic insert-if-absent, unique username and conditional version updates.
 - `database/readers.py`: read-only port surfaces.
-- `database/inbox.py`: durable fence keyed by consumer and event ID; no replay TTL.
 - `database/runtime.py`: process engine, per-scope sessions, read-only transactions, connection probe and disposal.
-- `di/profiles.py`: registers all five existing commands using the same session for repositories, Inbox and durable execution.
-- `application/idempotency/registration.py`: wraps default provisioning at the application boundary. If event_id is present, Inbox and profile/settings are committed by the command UoW together. If absent, lazy provisioning still uses insert-if-absent.
+- `di/profiles.py`: registers all five existing commands using the same session for repositories and durable execution.
 
 Repositories never commit. Use the bus for commands; do not place a second UoW around bus dispatch. For direct adapter use, enter SqlAlchemyUnitOfWork first. Runtime read scopes use PostgreSQL READ ONLY. Returned aggregates are detached values: unsaved mutation cannot leak into the database.
 
@@ -43,7 +41,7 @@ poetry run alembic upgrade head
 poetry run alembic check
 ```
 
-The immutable baseline creates profiles, user_settings, processed_events and idempotency_records. It contains fixed operations rather than importing live model definitions. Run migrations once per deployment, before starting replicas. Downgrade is destructive and is tested only on isolated schemas.
+The baseline creates profiles, user_settings and idempotency_records. It contains fixed operations rather than importing live model definitions. Run migrations once per deployment, before starting replicas. Downgrade is destructive and is tested only on isolated schemas.
 
 The runtime image includes Alembic and the revisions:
 
@@ -62,15 +60,29 @@ try:
         database.sessions,
         hot_store=hot_store,
         mutation_policy=IdempotencyPolicy(),
+        provisioning_policy=IdempotencyPolicy(),
     )
-    await bus.dispatch(create_default_command)
+    await bus.dispatch(
+        CreateDefaultProfileCommand(
+            user_id=event.user_id, registered_at=event.registered_at
+        ),
+        CommandContext(
+            idempotency_key=str(event.event_id),
+            idempotency_scope="consumer:profile.user_registered.v1",
+        ),
+        result_mode=ResultMode.COMPLETION_ONLY,
+    )
     async with database.readers() as readers:
         profile = await GetMyProfileHandler(readers.profiles)(query)
 finally:
     await database.close()
 ```
 
-The composition root provides the Redis adapter and explicit mutation policy. Mutating commands with that policy require a trusted scope and idempotency key. The default provisioning command uses database uniqueness and, when event_id is supplied, the durable Inbox instead of time-limited HTTP replay.
+The composition root provides the Redis adapter and explicit policies. Provisioning requires HOT_DURABLE. Registration uses the existing COMPLETION_ONLY result mode: profile, settings and an idempotency_records completion marker commit in the same transaction. The transport maps event_id to the key and supplies a trusted consumer scope; neither belongs to the business command. A conflicting payload under the same identity fails fingerprint validation. Acknowledge the broker only after successful dispatch; retry transient failures using the same identity and payload.
+
+Choose retention for the expected redelivery window (the existing default is 24 hours). Within retention, duplicates bypass the handler, including when Redis is unavailable. After expiration the handler can execute again; insert-if-absent preserves existing profile and settings edits. This is not a permanent event log. Lazy repair also supplies a trusted scope and an idempotency key; a new repair attempt needs a new identity if the previous completion is still retained. Keep registered_at stable for retries of the same command.
+
+Revision 0001 was revised before deployment; its previous form was tested only in disposable databases. It contains no processed_events table and requires no separate Inbox migration.
 
 HTTP and Kafka transports are not connected by this change. The current HTTP factory still exposes health endpoints only; its readiness does not call ProfileDatabase.check_ready yet. That probe checks database connectivity, not the installed migration revision. The next transport/bootstrap stage must own resource lifecycle, supply configuration and wire appropriate readiness.
 
@@ -95,6 +107,6 @@ docker stop profile-test-postgres profile-test-valkey
 
 Wait for PostgreSQL readiness before running tests. Each PostgreSQL test creates, migrates and drops only its own randomly named schema; Redis tests use a unique namespace. Do not point these variables at production.
 
-Coverage includes concurrent provisioning, missing-half repair, SQL OCC, username races, read-only scopes, schema roundtrip, invalid privacy constraints, atomic Inbox and pair creation, all command registrations, no-op, rollback of business effects when replay persistence fails and PostgreSQL replay without Redis.
+Coverage includes concurrent provisioning, missing-half repair, SQL OCC, username races, read-only scopes, schema roundtrip, invalid privacy constraints, atomic completion markers and pair creation, registration rollback/retry, consumer scope isolation and retention expiry, all command registrations, no-op, rollback of business effects when replay persistence fails and PostgreSQL replay without Redis.
 
 CI provisions PostgreSQL/Valkey, sets required test URLs, and runs unit, handler and integration suites. Missing URLs fail when REQUIRE_INFRASTRUCTURE_TESTS is set. Existing business HTTP tests intentionally remain red until the transport stage is implemented; they are not skipped or weakened here.

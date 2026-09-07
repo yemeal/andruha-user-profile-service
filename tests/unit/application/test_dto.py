@@ -204,30 +204,24 @@ class TestCommandsDTO:
     def test_create_default_profile_command_valid(self) -> None:
         user_id = uuid.uuid4()
         now = datetime.now(UTC)
-        event_id = uuid.uuid4()
 
         cmd = CreateDefaultProfileCommand(
             user_id=user_id,
             registered_at=now,
-            event_id=event_id,
         )
         assert cmd.user_id == user_id
         assert cmd.registered_at == now
-        assert cmd.event_id == event_id
 
     def test_create_default_profile_command_string_coercion_and_parsing(self) -> None:
         user_id_str = "01912a75-7b23-74e2-8951-40be317130a1"
         registered_at_str = "2026-08-21T05:00:00.000Z"
-        event_id_str = "01912a75-7b23-74e2-8951-40be317130a2"
 
         data = {
             "user_id": user_id_str,
             "registered_at": registered_at_str,
-            "event_id": event_id_str,
         }
         cmd = CreateDefaultProfileCommand.model_validate(data)
         assert cmd.user_id == uuid.UUID(user_id_str)
-        assert cmd.event_id == uuid.UUID(event_id_str)
         assert isinstance(cmd.registered_at, datetime)
 
     def test_create_default_profile_command_invalid_uuid(self) -> None:

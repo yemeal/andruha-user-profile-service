@@ -1,4 +1,4 @@
-"""create profile settings inbox and durable idempotency"""
+"""create profile settings and durable idempotency"""
 
 import sqlalchemy as sa
 from alembic import op
@@ -91,16 +91,6 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_table(
-        "processed_events",
-        sa.Column("consumer", sa.String(length=200), nullable=False),
-        sa.Column("event_id", sa.Uuid(), nullable=False),
-        sa.Column("processed_at", sa.DateTime(timezone=True), nullable=False),
-        sa.CheckConstraint(
-            "length(btrim(consumer)) > 0", name="ck_processed_events_consumer"
-        ),
-        sa.PrimaryKeyConstraint("consumer", "event_id"),
-    )
-    op.create_table(
         "profiles",
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("username", sa.String(length=32), nullable=True),
@@ -165,6 +155,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("user_settings")
     op.drop_table("profiles")
-    op.drop_table("processed_events")
     op.drop_index("ix_idempotency_records_expires_at", table_name="idempotency_records")
     op.drop_table("idempotency_records")

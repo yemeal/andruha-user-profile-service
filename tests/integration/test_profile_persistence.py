@@ -23,12 +23,13 @@ from app.application.commands.profiles.create_default.handler import (
 from app.application.commands.profiles.update.command import UpdateProfileCommand
 from app.application.commands.settings.update.command import UpdateSettingsCommand
 from app.application.dispatching.context import CommandContext
+from app.application.dispatching.result_mode import ResultMode
 from app.application.dto import ProfileDTO
 from app.application.exceptions.idempotency import (
     IdempotencyConflictError,
     IdempotencyUnavailableError,
 )
-from app.application.idempotency.policy import IdempotencyPolicy
+from app.application.idempotency.policy import IdempotencyMode, IdempotencyPolicy
 from app.domain.aggregates.profiles import UserProfile
 from app.domain.aggregates.settings import UserSettings
 from app.domain.exceptions.user_profile import (
@@ -36,9 +37,7 @@ from app.domain.exceptions.user_profile import (
     UsernameAlreadyTakenError,
 )
 from app.domain.exceptions.user_settings import SettingsVersionMismatchError
-from app.infrastructure.database.inbox import PostgresEventDeduplication
 from app.infrastructure.database.models import (
-    ProcessedEventORM,
     ProfileORM,
     SettingsORM,
 )
@@ -130,7 +129,6 @@ async def test_migration_roundtrip_and_schema_match(profile_sessions):
             "alembic_version",
             "profiles",
             "user_settings",
-            "processed_events",
             "idempotency_records",
         }
         await connection.run_sync(
@@ -161,32 +159,6 @@ async def test_concurrent_provision_and_late_event_preserve_edits(profile_sessio
         profile = await PostgresProfileRepository(session).get_by_id(user_id)
         assert profile.display_name == "Changed" and profile.version == 2
         assert profile.created_at == NOW
-
-
-async def test_inbox_and_both_aggregates_rollback_together(profile_sessions):
-    user_id, event_id = uuid4(), uuid4()
-    async with profile_sessions() as session:
-        with pytest.raises(RuntimeError, match="crash"):
-            async with SqlAlchemyUnitOfWork(session):
-                assert await PostgresEventDeduplication(
-                    session, consumer="profile"
-                ).mark_processed_if_absent(event_id, NOW)
-                await CreateDefaultProfileHandler(
-                    PostgresProfileRepository(session),
-                    PostgresSettingsRepository(session),
-                )(CreateDefaultProfileCommand(user_id=user_id, registered_at=NOW))
-                raise RuntimeError("crash")
-        async with SqlAlchemyUnitOfWork(session):
-            for table in (ProfileORM, SettingsORM, ProcessedEventORM):
-                assert (
-                    await session.scalar(select(func.count()).select_from(table)) == 0
-                )
-            inbox = PostgresEventDeduplication(session, consumer="profile")
-            assert await inbox.mark_processed_if_absent(event_id, NOW)
-            assert not await inbox.mark_processed_if_absent(event_id, NOW)
-            assert await PostgresEventDeduplication(
-                session, consumer="other"
-            ).mark_processed_if_absent(event_id, NOW)
 
 
 async def test_failure_creating_settings_rolls_back_profile(profile_sessions):
@@ -335,10 +307,11 @@ async def test_actual_commands_commit_and_replay_from_postgres_after_cache_loss(
         profile_sessions,
         hot_store=profile_hot_store,
         mutation_policy=IdempotencyPolicy(),
+        provisioning_policy=IdempotencyPolicy(),
         clock=lambda: NOW + timedelta(seconds=2),
     )
     user_id = uuid4()
-    await bus.dispatch(CreateDefaultProfileCommand(user_id=user_id, registered_at=NOW))
+    await provision(profile_sessions, user_id)
     ctx = CommandContext(idempotency_key="update", idempotency_scope=f"user:{user_id}")
     change = UpdateProfileCommand(
         user_id=user_id, expected_version=1, display_name="Saved"
@@ -355,6 +328,7 @@ async def test_actual_commands_commit_and_replay_from_postgres_after_cache_loss(
         profile_sessions,
         hot_store=OfflineHot(),
         mutation_policy=IdempotencyPolicy(),
+        provisioning_policy=IdempotencyPolicy(),
         clock=lambda: NOW + timedelta(seconds=2),
     )
     assert await replay_bus.dispatch(change, ctx) == first
@@ -436,6 +410,7 @@ async def test_same_command_race_without_hot_store_returns_committed_replay(
         profile_sessions,
         hot_store=OfflineHot(),
         mutation_policy=IdempotencyPolicy(),
+        provisioning_policy=IdempotencyPolicy(),
         clock=lambda: NOW + timedelta(seconds=1),
     )
     change = UpdateProfileCommand(
@@ -468,6 +443,7 @@ async def test_stale_new_key_preserves_conflict_and_does_not_store_replay(
         profile_sessions,
         hot_store=profile_hot_store,
         mutation_policy=IdempotencyPolicy(),
+        provisioning_policy=IdempotencyPolicy(),
         clock=lambda: NOW + timedelta(seconds=1),
     )
     change = (
@@ -495,40 +471,6 @@ async def test_stale_new_key_preserves_conflict_and_does_not_store_replay(
         )
 
 
-async def test_production_registration_bus_commits_inbox_with_pair(
-    profile_sessions, profile_hot_store, monkeypatch
-):
-    user_id, event_id = uuid4(), uuid4()
-    bus = build_profile_command_bus(
-        profile_sessions,
-        hot_store=profile_hot_store,
-        mutation_policy=IdempotencyPolicy(),
-        clock=lambda: NOW + timedelta(seconds=1),
-    )
-    registration = CreateDefaultProfileCommand(
-        user_id=user_id, registered_at=NOW, event_id=event_id
-    )
-    original = PostgresSettingsRepository.create_default_if_absent
-
-    async def fail(self, user_id, now):
-        raise RuntimeError("settings failed")
-
-    monkeypatch.setattr(PostgresSettingsRepository, "create_default_if_absent", fail)
-    with pytest.raises(RuntimeError, match="settings failed"):
-        await bus.dispatch(registration)
-    async with profile_sessions() as session, SqlAlchemyUnitOfWork(session):
-        for table in (ProfileORM, SettingsORM, ProcessedEventORM):
-            assert await session.scalar(select(func.count()).select_from(table)) == 0
-    monkeypatch.setattr(
-        PostgresSettingsRepository, "create_default_if_absent", original
-    )
-    async with asyncio.timeout(15):
-        await asyncio.gather(*(bus.dispatch(registration) for _ in range(4)))
-    async with profile_sessions() as session, SqlAlchemyUnitOfWork(session):
-        for table in (ProfileORM, SettingsORM, ProcessedEventORM):
-            assert await session.scalar(select(func.count()).select_from(table)) == 1
-
-
 async def test_bus_rolls_back_update_when_replay_cannot_be_saved(
     profile_sessions, profile_hot_store, monkeypatch
 ):
@@ -547,6 +489,7 @@ async def test_bus_rolls_back_update_when_replay_cannot_be_saved(
         profile_sessions,
         hot_store=profile_hot_store,
         mutation_policy=IdempotencyPolicy(),
+        provisioning_policy=IdempotencyPolicy(),
         clock=lambda: NOW + timedelta(seconds=1),
     )
     with pytest.raises(RuntimeError, match="replay failed"):
@@ -580,9 +523,10 @@ async def test_all_registered_mutations_and_noop_versions(
         profile_sessions,
         hot_store=profile_hot_store,
         mutation_policy=IdempotencyPolicy(),
+        provisioning_policy=IdempotencyPolicy(),
         clock=lambda: NOW + timedelta(seconds=1),
     )
-    await bus.dispatch(CreateDefaultProfileCommand(user_id=user_id, registered_at=NOW))
+    await provision(profile_sessions, user_id)
 
     async def dispatch(command):
         return await bus.dispatch(
@@ -668,9 +612,7 @@ async def test_runtime_read_scope_is_enforced_read_only(profile_sessions, monkey
 
         async def unexpected_write(self, user_id):
             await self._session.execute(
-                text(
-                    "INSERT INTO processed_events (consumer,event_id,processed_at) VALUES ('test',:id,now())"
-                ),
+                text("UPDATE profiles SET display_name=display_name WHERE user_id=:id"),
                 {"id": user_id},
             )
             return await original(self, user_id)
@@ -681,3 +623,202 @@ async def test_runtime_read_scope_is_enforced_read_only(profile_sessions, monkey
                 await readers.profiles.get_by_id(uuid4())
     finally:
         await database.close()
+
+
+class OfflineRegistrationHot:
+    async def claim(self, *args):
+        raise IdempotencyUnavailableError("offline")
+
+
+def registration_context(event_id, consumer="profile.user_registered.v1"):
+    return CommandContext(
+        idempotency_key=str(event_id), idempotency_scope=f"consumer:{consumer}"
+    )
+
+
+@pytest.mark.parametrize("failure", ["settings", "completion"])
+async def test_registration_rollback_retry_and_completion_replay(
+    profile_sessions, profile_hot_store, monkeypatch, failure
+):
+    from app.infrastructure.idempotency.postgres.durable_store import (
+        PostgresDurableIdempotencyStore,
+    )
+
+    bus = build_profile_command_bus(
+        profile_sessions,
+        hot_store=profile_hot_store,
+        mutation_policy=IdempotencyPolicy(),
+        provisioning_policy=IdempotencyPolicy(),
+        clock=lambda: NOW,
+    )
+    registration = CreateDefaultProfileCommand(user_id=uuid4(), registered_at=NOW)
+    context = registration_context(uuid4())
+    target, method = (
+        (PostgresSettingsRepository, "create_default_if_absent")
+        if failure == "settings"
+        else (PostgresDurableIdempotencyStore, "try_add_completed")
+    )
+
+    async def fail(*args, **kwargs):
+        raise RuntimeError("injected failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(target, method, fail)
+        with pytest.raises(RuntimeError, match="injected failure"):
+            await bus.dispatch(
+                registration, context, result_mode=ResultMode.COMPLETION_ONLY
+            )
+    async with profile_sessions() as session:
+        for table in (ProfileORM, SettingsORM, IdempotencyRecordORM):
+            assert await session.scalar(select(func.count()).select_from(table)) == 0
+    assert (
+        await bus.dispatch(
+            registration, context, result_mode=ResultMode.COMPLETION_ONLY
+        )
+        is None
+    )
+    async with profile_sessions() as session:
+        for table in (ProfileORM, SettingsORM, IdempotencyRecordORM):
+            assert await session.scalar(select(func.count()).select_from(table)) == 1
+        record = (await session.scalars(select(IdempotencyRecordORM))).one()
+        assert record.result_type == "completion" and record.result_payload is None
+        assert record.resource_id is None and record.resource_type is None
+        assert record.subject_id == context.idempotency_scope
+        assert record.operation == "profile.create_default.v1"
+
+    # Both hot replay and PostgreSQL fallback must avoid the handler entirely.
+    monkeypatch.setattr(CreateDefaultProfileHandler, "__call__", fail)
+    assert (
+        await bus.dispatch(
+            registration, context, result_mode=ResultMode.COMPLETION_ONLY
+        )
+        is None
+    )
+    offline_bus = build_profile_command_bus(
+        profile_sessions,
+        hot_store=OfflineRegistrationHot(),
+        mutation_policy=IdempotencyPolicy(),
+        provisioning_policy=IdempotencyPolicy(),
+        clock=lambda: NOW,
+    )
+    assert (
+        await offline_bus.dispatch(
+            registration, context, result_mode=ResultMode.COMPLETION_ONLY
+        )
+        is None
+    )
+
+
+async def test_registration_concurrent_duplicates_use_one_completion(
+    profile_sessions, monkeypatch
+):
+    barrier = asyncio.Barrier(4)
+    original = CreateDefaultProfileHandler.__call__
+
+    async def concurrent_start(self, command):
+        await barrier.wait()
+        return await original(self, command)
+
+    monkeypatch.setattr(CreateDefaultProfileHandler, "__call__", concurrent_start)
+    bus = build_profile_command_bus(
+        profile_sessions,
+        hot_store=OfflineRegistrationHot(),
+        mutation_policy=IdempotencyPolicy(),
+        provisioning_policy=IdempotencyPolicy(),
+        clock=lambda: NOW,
+    )
+    registration = CreateDefaultProfileCommand(user_id=uuid4(), registered_at=NOW)
+    context = registration_context(uuid4())
+    async with asyncio.timeout(15):
+        results = await asyncio.gather(
+            *(
+                bus.dispatch(
+                    registration, context, result_mode=ResultMode.COMPLETION_ONLY
+                )
+                for _ in range(4)
+            )
+        )
+    assert results == [None] * 4
+    async with profile_sessions() as session:
+        for table in (ProfileORM, SettingsORM, IdempotencyRecordORM):
+            assert await session.scalar(select(func.count()).select_from(table)) == 1
+
+
+async def test_registration_scope_fingerprint_and_retention(
+    profile_sessions, monkeypatch
+):
+    now = NOW
+    policy = IdempotencyPolicy(retention_seconds=60, hot_cache_seconds=30)
+    bus = build_profile_command_bus(
+        profile_sessions,
+        hot_store=OfflineRegistrationHot(),
+        mutation_policy=IdempotencyPolicy(),
+        provisioning_policy=policy,
+        clock=lambda: now,
+    )
+    user_id, event_id = uuid4(), uuid4()
+    registration = CreateDefaultProfileCommand(user_id=user_id, registered_at=NOW)
+    context = registration_context(event_id)
+    await bus.dispatch(registration, context, result_mode=ResultMode.COMPLETION_ONLY)
+    with pytest.raises(IdempotencyConflictError):
+        await bus.dispatch(
+            registration.model_copy(update={"user_id": uuid4()}),
+            context,
+            result_mode=ResultMode.COMPLETION_ONLY,
+        )
+    await bus.dispatch(
+        registration,
+        registration_context(event_id, "other-consumer"),
+        result_mode=ResultMode.COMPLETION_ONLY,
+    )
+    async with profile_sessions() as session, SqlAlchemyUnitOfWork(session):
+        assert (
+            await session.scalar(select(func.count()).select_from(IdempotencyRecordORM))
+            == 2
+        )
+        profiles = PostgresProfileRepository(session)
+        profile = await profiles.get_by_id(user_id)
+        profile.update_profile(display_name="Preserved", now=NOW + timedelta(seconds=1))
+        await profiles.update(profile, expected_version=1)
+        settings = PostgresSettingsRepository(session)
+        value = await settings.get_by_id(user_id)
+        value.update_settings(theme="dark", now=NOW + timedelta(seconds=1))
+        await settings.update(value, expected_version=1)
+    calls = 0
+    original = CreateDefaultProfileHandler.__call__
+
+    async def track(self, command):
+        nonlocal calls
+        calls += 1
+        return await original(self, command)
+
+    monkeypatch.setattr(CreateDefaultProfileHandler, "__call__", track)
+    now = NOW + timedelta(seconds=61)
+    await bus.dispatch(registration, context, result_mode=ResultMode.COMPLETION_ONLY)
+    assert calls == 1
+    async with profile_sessions() as session, SqlAlchemyUnitOfWork(session):
+        profile = await PostgresProfileRepository(session).get_by_id(user_id)
+        settings = await PostgresSettingsRepository(session).get_by_id(user_id)
+        assert profile.display_name == "Preserved" and profile.version == 2
+        assert settings.theme == "dark" and settings.version == 2
+        assert profile.created_at == NOW and settings.created_at == NOW
+        record = (
+            await session.scalars(
+                select(IdempotencyRecordORM).where(
+                    IdempotencyRecordORM.subject_id == context.idempotency_scope
+                )
+            )
+        ).one()
+        assert record.completed_at == now and record.expires_at == now + timedelta(
+            seconds=60
+        )
+
+
+def test_registration_requires_durable_policy():
+    with pytest.raises(ValueError, match="HOT_DURABLE"):
+        build_profile_command_bus(
+            async_sessionmaker(),
+            hot_store=OfflineRegistrationHot(),
+            mutation_policy=IdempotencyPolicy(),
+            provisioning_policy=IdempotencyPolicy(mode=IdempotencyMode.HOT_ONLY),
+        )

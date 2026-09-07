@@ -2,7 +2,7 @@
 
 ## Purpose and current status
 
-The service contains the profile/settings domain, eleven application handlers, transactional command dispatch, and PostgreSQL repositories, readers, Inbox and migrations. Business HTTP routes and the Kafka consumer are not connected yet. See [PostgreSQL infrastructure](docs/postgres-infrastructure.md) for configuration and real integration tests.
+The service contains the profile/settings domain, eleven application handlers, transactional command dispatch, and PostgreSQL repositories, readers, durable idempotency and migrations. Business HTTP routes and the Kafka consumer are not connected yet. See [PostgreSQL infrastructure](docs/postgres-infrastructure.md) for configuration and real integration tests.
 
 ## Responsibility and explicit non-responsibilities
 

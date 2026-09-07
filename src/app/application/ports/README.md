@@ -11,7 +11,6 @@
 ```
 src/app/application/ports/
 ├── __init__.py
-├── deduplication.py             # Порт дедупликации входящих событий EventDeduplicationPort
 └── persistence/                 # Порты взаимодействия с персистентным хранилищем
     ├── __init__.py
     ├── unit_of_work.py          # Транзакционный менеджер AsyncUOWProtocol
@@ -49,6 +48,6 @@ src/app/application/ports/
 
 ---
 
-## 4. Дедупликация событий (`app.application.ports.deduplication`)
+## 4. Идемпотентность (`app.application.ports.idempotency`)
 
-* **`EventDeduplicationPort`** — порт идемпотентного барьера (Inbox Fence) для защиты от повторной обработки событий брокера.
+Порты HotIdempotencyStore и DurableIdempotencyStore используются существующим CommandBus. Регистрация передаёт идентичность события через CommandContext и использует HOT_DURABLE с COMPLETION_ONLY. Запись о завершении сохраняется атомарно с профилем и настройками через DurableExecution.

@@ -20,7 +20,3 @@ class CreateDefaultProfileCommand(BaseCommand[NoneType]):
     registered_at: AwareDatetime = Field(
         description="Метка времени регистрации пользователя с обязательной таймзоной (UTC)",
     )
-    event_id: uuid.UUID | None = Field(
-        default=None,
-        description="Идентификатор входящего события для защиты от повторной обработки (Inbox fence)",
-    )
