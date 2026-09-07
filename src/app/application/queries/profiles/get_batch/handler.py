@@ -14,20 +14,29 @@ class GetBatchProfilesHandler:
 
     async def __call__(self, query: GetBatchProfilesQuery) -> list[PublicProfileDTO]:
         profiles = await self._profiles.get_batch(query.user_ids)
-        by_id = {profile.user_id: profile for profile in profiles}
-        result: list[PublicProfileDTO] = []
-        for user_id in query.user_ids:
-            profile = by_id.get(user_id)
-            if profile is None:
-                continue
-            # Reader settings пока имеет только get_by_id. Последовательные вызовы
-            # совместимы и с адаптерами, использующими одну AsyncSession.
-            settings = await self._settings.get_by_id(user_id)
-            if settings is None:
-                raise UserSettingsNotFoundError()
-            result.append(
-                PublicProfileDTO.from_domain_with_policy(
-                    profile, settings, query.viewer_id
-                )
+        if not profiles:
+            return []
+
+        profiles_by_id = {profile.user_id: profile for profile in profiles}
+
+        found_user_ids = (
+            query.user_ids
+            if len(profiles) == len(query.user_ids)
+            else [uid for uid in query.user_ids if uid in profiles_by_id]
+        )
+
+        # Пакетная выборка настроек устраняет проблему N+1 запросов к базе данных.
+        settings_list = await self._settings.get_batch(found_user_ids)
+        settings_by_id = {settings.id: settings for settings in settings_list}
+
+        if len(settings_by_id) != len(found_user_ids):
+            raise UserSettingsNotFoundError()
+
+        viewer_id = query.viewer_id
+
+        return [
+            PublicProfileDTO.from_domain_with_policy(
+                profiles_by_id[uid], settings_by_id[uid], viewer_id
             )
-        return result
+            for uid in found_user_ids
+        ]

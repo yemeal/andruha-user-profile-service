@@ -137,6 +137,12 @@ class SettingsReader:
     async def get_by_id(self, user_id: UUID) -> UserSettings | None:
         return await self._repository.get_by_id(user_id)
 
+    async def get_batch(self, user_ids: Sequence[UUID]) -> list[UserSettings]:
+        return await self._repository.get_batch(user_ids)
+
+    async def exists(self, user_id: UUID) -> bool:
+        return await self._repository.exists(user_id)
+
 
 # The only place coupled to class names / constructors of future handlers.
 # The public behavior under test is always: await handler(command_or_query).
@@ -216,7 +222,7 @@ class HandlerHarness:
         if module is None:
             pytest.fail(
                 f"RED: implement src/app/application/{key}/handler.py :: {class_name}; "
-                "constructor contract: tests/handlers_tdd/support.py:HANDLERS",
+                "constructor contract: tests/unit/application/support.py:HANDLERS",
                 pytrace=False,
             )
         handler_type = getattr(module, class_name, None)
