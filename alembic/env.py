@@ -4,8 +4,11 @@ from alembic import context
 from sqlalchemy import Connection, pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.infrastructure.database.config import DatabaseSettings
-from app.infrastructure.database.metadata import Base
+from app.core.settings import PostgresSettings
+from app.infrastructure.database.models import Base
+from app.infrastructure.idempotency.postgres.models import (  # noqa: F401
+    IdempotencyRecordORM,
+)
 
 config = context.config
 target_metadata = Base.metadata
@@ -21,7 +24,7 @@ def migrate(connection: Connection) -> None:
 
 async def online() -> None:
     engine = create_async_engine(
-        DatabaseSettings().database_url.get_secret_value(),
+        PostgresSettings().database_url.get_secret_value(),
         poolclass=pool.NullPool,
     )
     try:

@@ -15,6 +15,16 @@ import pytest
         "app.application.dispatching.result_mode",
         "app.application.dispatching.bus",
         "app.application.dispatching.registry",
+        "app.infrastructure.database",
+        "app.infrastructure.idempotency.observability",
+        "app.infrastructure.idempotency.postgres",
+        "app.infrastructure.idempotency.redis",
+        "app.infrastructure.idempotency.security",
+        "app.infrastructure.idempotency",
+        "app.infrastructure.database.models.base",
+        "app.infrastructure.database.models",
+        "app.infrastructure.idempotency.postgres.models",
+        "app.infrastructure.di.profiles",
     ],
 )
 def test_public_modules_can_be_imported_independently(module):

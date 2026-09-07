@@ -596,18 +596,11 @@ async def test_repository_missing_and_transaction_contract(profile_sessions, kin
 async def test_runtime_read_scope_is_enforced_read_only(profile_sessions, monkeypatch):
     from sqlalchemy.exc import DBAPIError
 
-    from app.infrastructure.database.config import DatabaseSettings
-    from app.infrastructure.database.runtime import ProfileDatabase
+    async with profile_sessions() as session, SqlAlchemyUnitOfWork(session):
+        await session.execute(text("SET TRANSACTION READ ONLY"))
+        reader = PostgresProfileReader(session)
+        assert await reader.get_by_id(uuid4()) is None
 
-    database = ProfileDatabase(
-        DatabaseSettings(database_url=os.environ["TEST_PROFILE_POSTGRES_DSN"])
-    )
-    # Route the runtime scope to this test's migrated schema.
-    database.sessions = profile_sessions
-    try:
-        await database.check_ready()
-        async with database.readers() as readers:
-            assert await readers.profiles.get_by_id(uuid4()) is None
         original = PostgresProfileReader.get_by_id
 
         async def unexpected_write(self, user_id):
@@ -619,10 +612,7 @@ async def test_runtime_read_scope_is_enforced_read_only(profile_sessions, monkey
 
         monkeypatch.setattr(PostgresProfileReader, "get_by_id", unexpected_write)
         with pytest.raises(DBAPIError):
-            async with database.readers() as readers:
-                await readers.profiles.get_by_id(uuid4())
-    finally:
-        await database.close()
+            await reader.get_by_id(uuid4())
 
 
 class OfflineRegistrationHot:

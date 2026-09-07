@@ -122,8 +122,8 @@ def upgrade() -> None:
             name="ck_profiles_timestamps",
         ),
         sa.CheckConstraint("version > 0", name="ck_profiles_version"),
-        sa.PrimaryKeyConstraint("user_id"),
-        sa.UniqueConstraint("username"),
+        sa.PrimaryKeyConstraint("user_id", name="profiles_pkey"),
+        sa.UniqueConstraint("username", name="profiles_username_key"),
     )
     op.create_table(
         "user_settings",
@@ -148,7 +148,7 @@ def upgrade() -> None:
             name="ck_user_settings_timestamps",
         ),
         sa.CheckConstraint("version > 0", name="ck_user_settings_version"),
-        sa.PrimaryKeyConstraint("user_id"),
+        sa.PrimaryKeyConstraint("user_id", name="user_settings_pkey"),
     )
 
 

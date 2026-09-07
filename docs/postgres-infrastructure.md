@@ -17,6 +17,18 @@ Profiles and settings deliberately have independent primary keys without a cross
 
 Update writes the version already advanced by the aggregate. It does not increment it again. The expected_version predicate selects the SQL winner; the returned value is hydrated from RETURNING. No-op handlers avoid writing. A stale command under a new idempotency key still raises its original version conflict; a duplicate losing OCC may replay only the committed record for its exact idempotency identity.
 
+## Query indexes
+
+The models and baseline explicitly name the existing PostgreSQL constraint indexes:
+
+| Index | Query paths |
+|---|---|
+| profiles_pkey (user_id), unique B-tree | Profile lookup, existence, batch lookup, insert-if-absent, updates and deletion |
+| profiles_username_key (username), unique B-tree | Exact normalized username lookup and uniqueness |
+| user_settings_pkey (user_id), unique B-tree | Settings lookup, insert-if-absent, updates and deletion |
+
+PRIMARY KEY and UNIQUE create these indexes; additional indexes on the same columns would duplicate them. An OCC update first locates at most one row by user_id, then checks version. There are currently no database filters or ordering by status, timestamps, locale, theme or privacy that require additional indexes. Null usernames remain allowed; normalized non-null usernames remain unique.
+
 ## Configuration
 
 DatabaseSettings reads process environment explicitly. It does not automatically read a .env file. URLs are masked in settings representations.
