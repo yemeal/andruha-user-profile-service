@@ -24,7 +24,7 @@ import pytest
         "app.infrastructure.database.models.base",
         "app.infrastructure.database.models",
         "app.infrastructure.idempotency.postgres.models",
-        "app.infrastructure.di.profiles",
+        "app.infrastructure.di.commands",
     ],
 )
 def test_public_modules_can_be_imported_independently(module):

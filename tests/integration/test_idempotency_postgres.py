@@ -145,14 +145,26 @@ async def test_concurrent_attempts_commit_only_winners_local_effect(sessions):
 async def test_production_bus_scope_commits_one_winner_for_concurrent_commands(
     sessions,
 ):
+    from contextlib import asynccontextmanager
+
     from pydantic import BaseModel
 
     from app.application.commands.base import BaseCommand
+    from app.application.dispatching.bus import CommandBus
     from app.application.dispatching.context import CommandContext
+    from app.application.dispatching.execution import CommandExecution
     from app.application.dispatching.registry import CommandHandlerRegistry
     from app.application.exceptions.idempotency import IdempotencyUnavailableError
+    from app.application.idempotency.coordinator import IdempotencyCoordinator
+    from app.application.idempotency.middleware import IdempotencyMiddleware
     from app.application.idempotency.policy import IdempotencyPolicy
-    from app.infrastructure.di.command_bus import build_postgres_command_bus
+    from app.application.idempotency.transactional_execution import (
+        TransactionalIdempotencyExecution,
+    )
+    from app.infrastructure.database.unit_of_work import SqlAlchemyUnitOfWork
+    from app.infrastructure.idempotency.postgres.durable_store import (
+        PostgresDurableIdempotencyStore,
+    )
 
     class Reply(BaseModel):
         number: int
@@ -188,12 +200,17 @@ async def test_production_bus_scope_commits_one_winner_for_concurrent_commands(
         operation="test.commit.v1",
         idempotency_policy=IdempotencyPolicy(),
     )
-    bus = build_postgres_command_bus(
-        registry,
-        sessions=sessions,
-        dependencies_factory=lambda session: session,
-        hot_store=OfflineHotStore(),
-    )
+
+    @asynccontextmanager
+    async def scope():
+        async with sessions() as session:
+            uow = SqlAlchemyUnitOfWork(session)
+            durable_store = PostgresDurableIdempotencyStore(session)
+            durable = TransactionalIdempotencyExecution(durable_store, uow)
+            coordinator = IdempotencyCoordinator(OfflineHotStore(), durable)
+            yield CommandExecution(session, uow, IdempotencyMiddleware(coordinator))
+
+    bus = CommandBus(registry, scope)
     ctx = CommandContext(idempotency_key="same", idempotency_scope="user:1")
     async with asyncio.timeout(15):
         first, second = await asyncio.gather(

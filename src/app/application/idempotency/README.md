@@ -127,10 +127,8 @@ CommandExecution вычисляет fingerprint по данным команды
 контекста в него не входят. SHA-256 ключа не шифрует сохранённый результат.
 
 ## Сборка и транзакции
-
-Готовая функция `infrastructure/di/command_bus.py:build_postgres_command_bus`
-принимает registry, `async_sessionmaker`, `dependencies_factory(session)`,
-HOT adapter и необязательные metrics/clock.
+Провайдер `infrastructure/di/commands.py:CommandsProvider` настраивает
+dispatch в Dishka через scope-фабрику запроса.
 
 Каждый dispatch получает новую session, UoW, repositories/dependencies,
 durable store, executor, coordinator и middleware. HOT adapter, circuit breaker

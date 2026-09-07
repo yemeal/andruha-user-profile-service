@@ -149,15 +149,27 @@ class HotStore:
 
 
 def build_bus(monkeypatch, registry, state):
-    # Exercise the production scope builder; replace only persistence adapters.
-    import app.infrastructure.di.command_bus as assembly
+    from contextlib import asynccontextmanager
 
-    monkeypatch.setattr(assembly, "SqlAlchemyUnitOfWork", Uow)
-    monkeypatch.setattr(assembly, "PostgresDurableIdempotencyStore", DurableStore)
-    return assembly.build_postgres_command_bus(
-        registry,
-        sessions=lambda: Session(state),
-        dependencies_factory=lambda session: session,
-        hot_store=HotStore(state),
-        clock=state.clock,
+    from app.application.dispatching.bus import CommandBus
+    from app.application.dispatching.execution import CommandExecution
+    from app.application.idempotency.coordinator import IdempotencyCoordinator
+    from app.application.idempotency.middleware import IdempotencyMiddleware
+    from app.application.idempotency.transactional_execution import (
+        TransactionalIdempotencyExecution,
     )
+
+    @asynccontextmanager
+    async def scope():
+        async with Session(state) as session:
+            uow = Uow(session)
+            durable_store = DurableStore(session, clock=state.clock)
+            durable = TransactionalIdempotencyExecution(
+                durable_store, uow, clock=state.clock
+            )
+            coordinator = IdempotencyCoordinator(
+                HotStore(state), durable, clock=state.clock
+            )
+            yield CommandExecution(session, uow, IdempotencyMiddleware(coordinator))
+
+    return CommandBus(registry, scope)

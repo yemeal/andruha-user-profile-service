@@ -12,7 +12,7 @@ result = await bus.dispatch(command, context, result_mode=ResultMode.REPLAYABLE)
 
 1. [bus.py](bus.py) находит регистрацию по типу команды.
 2. `scope_factory()` создаёт отдельные зависимости для этого вызова.
-   В [PostgreSQL-сборке](../../infrastructure/di/command_bus.py) это новая session,
+   В [PostgreSQL-сборке](../../infrastructure/di/commands.py) это новая session,
    репозитории, UoW и экземпляры исполнителей. `handler_factory(dependencies)`
    позднее создаст сам хендлер; фабрика — обычная функция создания объекта.
 3. [execution.py](execution.py) готовит функцию `invoke_handler`.

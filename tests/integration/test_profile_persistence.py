@@ -50,7 +50,7 @@ from app.infrastructure.database.repositories import (
     PostgresSettingsRepository,
 )
 from app.infrastructure.database.unit_of_work import SqlAlchemyUnitOfWork
-from app.infrastructure.di.profiles import build_profile_command_bus
+from app.infrastructure.di.commands import build_profile_command_bus
 from app.infrastructure.idempotency.postgres.models import IdempotencyRecordORM
 from app.infrastructure.idempotency.redis.hot_store import RedisHotIdempotencyStore
 
