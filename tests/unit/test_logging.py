@@ -3,19 +3,19 @@ import logging
 import pytest
 
 from app.core.logging import _log_level, _service_context, setup_logging
-from app.core.settings import Settings
+from app.core.settings import AppSettings
 
 
-def make_settings(*, dev_logs: bool, log_level: str = "INFO") -> Settings:
-    return Settings(
-        SERVICE_NAME="test-service",
-        APP_VERSION="1.2.3",
-        APP_ENVIRONMENT="test",
-        HOST="127.0.0.1",
-        PORT=9000,
-        DEV_LOGS=dev_logs,
-        LOG_LEVEL=log_level,
-        MUTE_LOGGERS=("chatty",),
+def make_settings(*, dev_logs: bool, log_level: str = "INFO") -> AppSettings:
+    return AppSettings(
+        service_name="test-service",
+        version="1.2.3",
+        environment="test",
+        host="127.0.0.1",
+        port=9000,
+        dev_logs=dev_logs,
+        log_level=log_level,
+        mute_loggers=("chatty",),
     )
 
 
