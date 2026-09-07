@@ -806,6 +806,18 @@ files = [
 ]
 
 [[package]]
+name = "dishka"
+version = "1.10.1"
+description = "Cute DI framework with scopes and agreeable API"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "dishka-1.10.1-py3-none-any.whl", hash = "sha256:84f40c1115eb391ce3fb558fd7946c5bcaf6361c35b77b7a185b7697a5720ec7"},
+    {file = "dishka-1.10.1.tar.gz", hash = "sha256:51fb624b9acc948b90f57128460061d1f3a1780121fe1c7d14c565e8bbff2083"},
+]
+
+[[package]]
 name = "fast-depends"
 version = "3.0.8"
 description = "FastDepends - extracted and cleared from HTTP domain logic FastAPI Dependency Injection System. Async and sync are both supported."
@@ -2311,4 +2323,4 @@ standard = ["httptools (>=0.8.0)", "python-dotenv (>=0.13)", "pyyaml (>=5.1)", "
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.14,<4.0"
-content-hash = "2187a3b40e54c879d570c9f45cfbdad60f95cbcb36a7de08af5c00fe9bcbdba3"
+content-hash = "8ec885a80d44018dab5d36afc57e00f49d2ccec6c98b43a6105dd7d68275b76b"
