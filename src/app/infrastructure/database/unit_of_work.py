@@ -8,6 +8,10 @@ from app.application.exceptions.persistence import (
     PersistenceUnavailableError,
     TransactionConflictError,
 )
+from app.infrastructure.exceptions.database import (
+    NestedTransactionNotAllowedError,
+    TransactionNotStartedError,
+)
 
 
 def _raise_persistence_error(error: SQLAlchemyError) -> NoReturn:
@@ -36,7 +40,7 @@ class SqlAlchemyUnitOfWork:
 
     async def __aenter__(self) -> Self:
         if self._transaction is not None or self._session.in_transaction():
-            raise RuntimeError("Nested or shared UoW transaction is not allowed")
+            raise NestedTransactionNotAllowedError()
         transaction = self._session.begin()
         try:
             await transaction.__aenter__()
@@ -53,7 +57,7 @@ class SqlAlchemyUnitOfWork:
     ) -> None:
         transaction = self._transaction
         if transaction is None:
-            raise RuntimeError("UoW transaction has not been started")
+            raise TransactionNotStartedError()
         try:
             # SQLAlchemy commits success and rolls back every BaseException,
             # including asyncio.CancelledError.

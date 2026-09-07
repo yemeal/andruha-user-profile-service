@@ -10,6 +10,10 @@ from app.application.exceptions.persistence import (
     TransactionConflictError,
 )
 from app.infrastructure.database.unit_of_work import SqlAlchemyUnitOfWork
+from app.infrastructure.exceptions.database import (
+    NestedTransactionNotAllowedError,
+    TransactionNotStartedError,
+)
 
 
 def session():
@@ -35,9 +39,16 @@ async def test_nested_transaction_is_rejected():
     db, _ = session()
     uow = SqlAlchemyUnitOfWork(db)
     async with uow:
-        with pytest.raises(RuntimeError, match="Nested"):
+        with pytest.raises(NestedTransactionNotAllowedError):
             async with uow:
                 pass
+
+
+async def test_transaction_not_started_is_rejected():
+    db, _ = session()
+    uow = SqlAlchemyUnitOfWork(db)
+    with pytest.raises(TransactionNotStartedError):
+        await uow.__aexit__(None, None, None)
 
 
 @pytest.mark.parametrize(
