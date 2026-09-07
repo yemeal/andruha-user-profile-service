@@ -1,4 +1,4 @@
-"""Business models; importing this module performs no I/O."""
+"""Database models; importing this module registers business tables in Base.metadata."""
 
 from app.infrastructure.database.models.base import Base
 from app.infrastructure.database.models.profiles import ProfileORM

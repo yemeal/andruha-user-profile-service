@@ -1,7 +1,14 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database.models.base import Base
@@ -34,7 +41,7 @@ class ProfileORM(Base):
     )
 
     user_id: Mapped[UUID] = mapped_column(primary_key=True)
-    username: Mapped[str | None] = mapped_column(String(32), unique=True)
+    username: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String(64))
     bio: Mapped[str | None] = mapped_column(String(255))
     avatar_key: Mapped[str | None] = mapped_column(Text)
