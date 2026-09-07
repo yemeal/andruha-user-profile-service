@@ -73,7 +73,7 @@ async def test_call_contract_matches_command(harness, key, command_type, changes
 
 
 def test_contract_cases_cover_every_command():
-    commands = Path(__file__).resolve().parents[3] / "src/app/application/commands"
+    commands = Path(__file__).resolve().parents[4] / "src/app/application/commands"
     actual = {
         "commands/" + str(path.parent.relative_to(commands)).replace("\\", "/")
         for path in commands.rglob("command.py")

@@ -1,10 +1,9 @@
 """Check that the test adapters cannot hide missing writes or lost updates."""
 
 import pytest
+from tests.unit.application.support import ProfileReader, SettingsReader
 
 from app.domain.exceptions.user_profile import ProfileVersionMismatchError
-
-from .support import ProfileReader, SettingsReader
 
 
 async def test_repository_returns_detached_aggregates(harness):

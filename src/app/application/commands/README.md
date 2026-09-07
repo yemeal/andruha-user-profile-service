@@ -20,7 +20,7 @@ NoneType, а [UpdateProfileCommand](profiles/update/command.py) — ProfileDTO.
 `CommandHandlerRegistry.register(..., result_type=...)` явно задаёт ту же
 схему для runtime-проверки. Реестр не извлекает generic-тип через Pydantic metadata.
 Согласованность декларации команды и регистрации проверяется при разработке.
-[Отдельный unit-тест](../../../../tests/handlers_tdd/commands/test_result_contract.py)
+[Отдельный unit-тест](../../../../tests/unit/application/commands/test_result_contract.py)
 проверяет для каждой команды аннотации `__call__` и фактическое возвращаемое значение
 в сценариях изменения и no-op. Новый command.py требует добавить случай в этот тест.
 Извлечение generic metadata используется только тестом, не рабочим pipeline.

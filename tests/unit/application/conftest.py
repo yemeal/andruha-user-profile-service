@@ -1,6 +1,5 @@
 import pytest
-
-from .support import HandlerHarness
+from tests.unit.application.support import HandlerHarness
 
 
 @pytest.fixture

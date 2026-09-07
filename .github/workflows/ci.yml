@@ -102,11 +102,6 @@ jobs:
           --cov-report=
           --cov-fail-under=0
 
-      - name: Handler tests
-        run: >-
-          poetry run pytest tests/handlers_tdd
-          --cov=app --cov-branch --cov-append --cov-report= --cov-fail-under=0
-
       - name: Integration tests
         run: >-
           poetry run pytest tests/integration

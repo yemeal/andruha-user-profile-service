@@ -65,7 +65,7 @@ venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 asyncio_mode = "auto"
 addopts = ["-ra", "--strict-config", "--strict-markers"]
 markers = [
