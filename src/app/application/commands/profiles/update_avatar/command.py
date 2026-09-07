@@ -3,9 +3,10 @@ import uuid
 from pydantic import Field
 
 from app.application.commands.base import BaseCommand
+from app.application.dto.profiles import ProfileDTO
 
 
-class UpdateAvatarCommand(BaseCommand):
+class UpdateAvatarCommand(BaseCommand[ProfileDTO]):
     """
     Команда обновления или удаления аватара профиля пользователя.
     """

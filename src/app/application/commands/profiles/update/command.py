@@ -3,9 +3,10 @@ import uuid
 from pydantic import Field
 
 from app.application.commands.base import BaseCommand
+from app.application.dto.profiles import ProfileDTO
 
 
-class UpdateProfileCommand(BaseCommand):
+class UpdateProfileCommand(BaseCommand[ProfileDTO]):
     """
     Команда обновления изменяемых текстовых полей профиля пользователя.
     """

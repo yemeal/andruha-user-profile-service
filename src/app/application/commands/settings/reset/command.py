@@ -3,9 +3,10 @@ import uuid
 from pydantic import Field
 
 from app.application.commands.base import BaseCommand
+from app.application.dto.settings import SettingsDTO
 
 
-class ResetSettingsCommand(BaseCommand):
+class ResetSettingsCommand(BaseCommand[SettingsDTO]):
     """
     Команда сброса настроек пользователя к дефолтным значениям.
     """

@@ -1,11 +1,14 @@
+from __future__ import annotations
+
 import uuid
+from types import NoneType
 
 from pydantic import AwareDatetime, Field
 
 from app.application.commands.base import BaseCommand
 
 
-class CreateDefaultProfileCommand(BaseCommand):
+class CreateDefaultProfileCommand(BaseCommand[NoneType]):
     """
     Команда создания дефолтного профиля и настроек пользователя.
     Используется при обработке входящих событий регистрации и в механизме Lazy JIT Repair.
