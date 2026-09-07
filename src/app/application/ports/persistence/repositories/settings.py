@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Protocol
 from uuid import UUID
 
 from app.application.ports.persistence.repositories.base import (
@@ -7,7 +8,7 @@ from app.application.ports.persistence.repositories.base import (
 from app.domain.aggregates.settings import UserSettings
 
 
-class SettingsRepositoryProtocol(AsyncRepositoryProtocol[UserSettings, UUID]):
+class SettingsRepositoryProtocol(AsyncRepositoryProtocol[UserSettings, UUID], Protocol):
     """
     Порт репозитория для работы с агрегатами настроек пользователей (UserSettings).
     """

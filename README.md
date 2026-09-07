@@ -2,19 +2,19 @@
 
 ## Purpose and current status
 
-This repository is the skeleton for the Andruha Messenger User Profile Service. It contains package boundaries and operational HTTP infrastructure only. No messenger business behavior is implemented.
+The service contains the profile/settings domain, eleven application handlers, transactional command dispatch, and PostgreSQL repositories, readers, Inbox and migrations. Business HTTP routes and the Kafka consumer are not connected yet. See [PostgreSQL infrastructure](docs/postgres-infrastructure.md) for configuration and real integration tests.
 
 ## Responsibility and explicit non-responsibilities
 
-Own editable public profile data in future iterations.
+Own editable public profile data and user preferences/privacy settings.
 
 It does not own credentials, authentication sessions, messages, media object bytes, or realtime delivery.
 
 ## Hexagonal/DDD layer map
 
-- `domain`: framework-free future business model.
-- `application`: future use cases and owned ports; depends only on domain.
-- `infrastructure`: future adapters implementing application ports.
+- `domain`: aggregates, value objects and privacy invariants; independent of transports and storage.
+- `application`: command/query handlers, dispatch, idempotency and owned ports; depends on domain.
+- `infrastructure`: PostgreSQL/Redis adapters and dependency factories implementing application ports.
 - `entrypoints`: transport translation that will call application services.
 - `core`: configuration and cross-cutting logging only.
 
@@ -51,10 +51,10 @@ poetry run pytest
 docker build --target runtime --tag andruha/user-profile-service:local .
 ```
 
-`.github/workflows/ci.yml` runs lint, strict Pyright, unit and integration
+`.github/workflows/ci.yml` runs lint, strict Pyright, unit, handler and integration
 tests, branch coverage >= 80%, runtime dependency audit, secret scanning, and a
 Docker smoke test. `.github/workflows/release.yml` publishes a verified image
-to GHCR only for a version tag. Business APIs and persistence remain deferred.
+to GHCR only for a version tag. Business APIs remain deferred; their existing acceptance tests are intentionally red. PostgreSQL/Redis adapter tests require the environment described in the infrastructure guide.
 
 ## Canonical project material
 

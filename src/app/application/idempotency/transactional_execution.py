@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 
@@ -19,6 +19,8 @@ from app.application.ports.idempotency.durable_execution import IdempotentOperat
 from app.application.ports.idempotency.durable_store import DurableIdempotencyStore
 from app.application.ports.persistence.unit_of_work import AsyncUOWProtocol
 from app.domain.clock import utc_now
+from app.domain.exceptions.user_profile import ProfileVersionMismatchError
+from app.domain.exceptions.user_settings import SettingsVersionMismatchError
 
 
 class _ConcurrentWinnerCommitted(Exception):
@@ -50,7 +52,7 @@ class TransactionalIdempotencyExecution:
         self._active = False
 
     @contextmanager
-    def _exclusive_use(self) -> Iterator[None]:
+    def _exclusive_use(self) -> Generator[None]:
         # The check and assignment contain no await: competing tasks cannot
         # accidentally enter the same session while this execution is active.
         if self._active:
@@ -105,11 +107,19 @@ class TransactionalIdempotencyExecution:
                 )
                 if not await self._durable_store.try_add_completed(identity, completed):
                     raise _ConcurrentWinnerCommitted
-        except (_ConcurrentWinnerCommitted, TransactionConflictError) as race_error:
+        except (
+            _ConcurrentWinnerCommitted,
+            TransactionConflictError,
+            ProfileVersionMismatchError,
+            SettingsVersionMismatchError,
+        ) as race_error:
+            # A duplicate can lose business OCC before inserting its replay row.
+            # Resolve only a committed winner for this exact idempotency identity;
+            # otherwise preserve the original concurrency/domain error.
             winner = await self._find_existing(identity, request_fingerprint)
             if winner is not None:
                 return winner
-            if isinstance(race_error, TransactionConflictError):
+            if not isinstance(race_error, _ConcurrentWinnerCommitted):
                 raise
             # A winner can expire or be removed between the conflict and lookup.
             # Do not execute the operation again inside this attempt.

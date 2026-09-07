@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Protocol
 from uuid import UUID
 
 from app.application.ports.persistence.repositories.base import (
@@ -7,7 +8,7 @@ from app.application.ports.persistence.repositories.base import (
 from app.domain.aggregates.profiles import UserProfile
 
 
-class ProfileRepositoryProtocol(AsyncRepositoryProtocol[UserProfile, UUID]):
+class ProfileRepositoryProtocol(AsyncRepositoryProtocol[UserProfile, UUID], Protocol):
     """
     Порт репозитория для работы с агрегатами профилей пользователей (UserProfile).
     Фокусируется на операциях изменения и загрузки агрегата.
