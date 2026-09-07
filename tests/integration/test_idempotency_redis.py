@@ -22,6 +22,8 @@ pytestmark = pytest.mark.integration
 async def redis_store():
     url = os.getenv("TEST_IDEMPOTENCY_REDIS_URL")
     if not url:
+        if os.getenv("REQUIRE_INFRASTRUCTURE_TESTS"):
+            pytest.fail("TEST_IDEMPOTENCY_REDIS_URL must be configured")
         pytest.skip("TEST_IDEMPOTENCY_REDIS_URL is not configured")
     client = Redis.from_url(url)
     namespace = "idempotency-test:" + uuid4().hex

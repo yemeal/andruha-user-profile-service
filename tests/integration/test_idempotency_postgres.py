@@ -34,6 +34,8 @@ pytestmark = pytest.mark.integration
 async def sessions():
     dsn = os.getenv("TEST_IDEMPOTENCY_POSTGRES_DSN")
     if not dsn:
+        if os.getenv("REQUIRE_INFRASTRUCTURE_TESTS"):
+            pytest.fail("TEST_IDEMPOTENCY_POSTGRES_DSN must be configured")
         pytest.skip("TEST_IDEMPOTENCY_POSTGRES_DSN is not configured")
     schema = "idempotency_test_" + uuid4().hex
     admin = create_async_engine(dsn)

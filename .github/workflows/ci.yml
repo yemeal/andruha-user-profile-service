@@ -27,6 +27,30 @@ jobs:
     name: Quality and tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.10-bookworm
+        env:
+          POSTGRES_USER: profile_test
+          POSTGRES_PASSWORD: profile_test
+          POSTGRES_DB: profile_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U profile_test -d profile_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      valkey:
+        image: valkey/valkey:8.1.9-alpine3.24
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_PROFILE_POSTGRES_DSN: postgresql+asyncpg://profile_test:profile_test@127.0.0.1:5432/profile_test
+      TEST_IDEMPOTENCY_POSTGRES_DSN: postgresql+asyncpg://profile_test:profile_test@127.0.0.1:5432/profile_test
+      TEST_IDEMPOTENCY_REDIS_URL: redis://127.0.0.1:6379/0
+      REQUIRE_INFRASTRUCTURE_TESTS: "1"
 
     steps:
       - name: Checkout repository
@@ -77,6 +101,11 @@ jobs:
           --cov-branch
           --cov-report=
           --cov-fail-under=0
+
+      - name: Handler tests
+        run: >-
+          poetry run pytest tests/handlers_tdd
+          --cov=app --cov-branch --cov-append --cov-report= --cov-fail-under=0
 
       - name: Integration tests
         run: >-
