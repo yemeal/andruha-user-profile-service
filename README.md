@@ -47,11 +47,12 @@ service can be verified from this repository with:
 poetry sync --with dev --no-root
 poetry run ruff check .
 poetry run ruff format --check .
+poetry run ty check --error-on-warning
 poetry run pytest
 docker build --target runtime --tag andruha/user-profile-service:local .
 ```
 
-`.github/workflows/ci.yml` runs lint, strict Pyright, unit and integration
+`.github/workflows/ci.yml` runs lint, ty type checking, unit and integration
 tests, branch coverage >= 80%, runtime dependency audit, secret scanning, and a
 Docker smoke test. `.github/workflows/release.yml` publishes a verified image
 to GHCR only for a version tag. Business APIs and persistence remain deferred.
