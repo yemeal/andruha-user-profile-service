@@ -7,34 +7,40 @@ from typing import Any
 
 import structlog
 
-from app.core.settings import Settings, get_settings
+from app.core.settings import AppSettings, Settings, get_settings
 
 EventDict = MutableMapping[str, Any]
 
 
-def _log_level(settings: Settings) -> int:
-    level = logging.getLevelNamesMapping().get(settings.LOG_LEVEL)
+def _log_level(settings: AppSettings) -> int:
+    level = logging.getLevelNamesMapping().get(settings.log_level)
     if level is None:
-        raise ValueError(f"Unsupported LOG_LEVEL: {settings.LOG_LEVEL}")
+        raise ValueError(f"Unsupported LOG_LEVEL: {settings.log_level}")
     return level
 
 
-def _service_context(settings: Settings):
+def _service_context(settings: AppSettings):
     def add_service_context(
         _logger: object,
         _method_name: str,
         event_dict: EventDict,
     ) -> EventDict:
-        event_dict.setdefault("service", settings.SERVICE_NAME)
-        event_dict.setdefault("version", settings.APP_VERSION)
-        event_dict.setdefault("environment", settings.APP_ENVIRONMENT)
+        event_dict.setdefault("service", settings.service_name)
+        event_dict.setdefault("version", settings.version)
+        event_dict.setdefault("environment", settings.environment)
         return event_dict
 
     return add_service_context
 
 
-def setup_logging(settings: Settings | None = None) -> None:
-    current_settings = settings or get_settings()
+def setup_logging(settings: AppSettings | Settings | None = None) -> None:
+    if settings is None:
+        current_settings = get_settings().app
+    elif isinstance(settings, Settings):
+        current_settings = settings.app
+    else:
+        current_settings = settings
+
     level = _log_level(current_settings)
 
     shared_processors = [
@@ -48,7 +54,7 @@ def setup_logging(settings: Settings | None = None) -> None:
     ]
     renderer = (
         structlog.dev.ConsoleRenderer()
-        if current_settings.DEV_LOGS
+        if current_settings.dev_logs
         else structlog.processors.JSONRenderer()
     )
 
@@ -95,6 +101,6 @@ def setup_logging(settings: Settings | None = None) -> None:
         logger.propagate = True
         logger.setLevel(
             max(level, logging.WARNING)
-            if logger_name in current_settings.MUTE_LOGGERS
+            if logger_name in current_settings.mute_loggers
             else level
         )

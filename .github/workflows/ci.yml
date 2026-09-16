@@ -26,6 +26,30 @@ jobs:
     name: Quality and tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.10-bookworm
+        env:
+          POSTGRES_USER: profile_test
+          POSTGRES_PASSWORD: profile_test
+          POSTGRES_DB: profile_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U profile_test -d profile_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      valkey:
+        image: valkey/valkey:8.1.9-alpine3.24
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_PROFILE_POSTGRES_DSN: postgresql+asyncpg://profile_test:profile_test@127.0.0.1:5432/profile_test
+      TEST_IDEMPOTENCY_POSTGRES_DSN: postgresql+asyncpg://profile_test:profile_test@127.0.0.1:5432/profile_test
+      TEST_IDEMPOTENCY_REDIS_URL: redis://127.0.0.1:6379/0
+      REQUIRE_INFRASTRUCTURE_TESTS: "1"
 
     steps:
       - name: Checkout repository
@@ -151,6 +175,10 @@ jobs:
           test -n "${service_port}"
 
           container_name="${GITHUB_REPOSITORY##*/}-smoke-${GITHUB_RUN_ID}"
+          postgres_name="${container_name}-postgres"
+          valkey_name="${container_name}-valkey"
+          network_name="${container_name}-network"
+          service_token="$(openssl rand -hex 32)"
           headers_file="$(mktemp)"
           live_body="$(mktemp)"
           ready_body="$(mktemp)"
@@ -159,15 +187,43 @@ jobs:
             exit_code=$?
             if [ "${exit_code}" -ne 0 ]; then
               docker logs "${container_name}" || true
+              docker logs "${postgres_name}" || true
+              docker logs "${valkey_name}" || true
             fi
-            docker stop "${container_name}" >/dev/null 2>&1 || true
+            docker rm --force --volumes "${container_name}" "${postgres_name}" "${valkey_name}" >/dev/null 2>&1 || true
+            docker network rm "${network_name}" >/dev/null 2>&1 || true
+            rm -f "${headers_file}" "${live_body}" "${ready_body}"
             exit "${exit_code}"
           }
           trap cleanup EXIT
 
-          docker run --detach --rm \
+          docker network create "${network_name}" >/dev/null
+          docker run --detach --name "${postgres_name}" --network "${network_name}" \
+            --env POSTGRES_USER=profile_test --env POSTGRES_PASSWORD=profile_test \
+            --env POSTGRES_DB=profile_test postgres:17.10-bookworm
+          docker run --detach --name "${valkey_name}" --network "${network_name}" \
+            valkey/valkey:8.1.9-alpine3.24 # gitleaks:allow -- public Docker image tag
+
+          for _ in {1..30}; do
+            if docker exec "${postgres_name}" pg_isready -U profile_test -d profile_test \
+              && docker exec "${valkey_name}" valkey-cli ping; then
+              break
+            fi
+            sleep 1
+          done
+
+          service_args=(
+            --network "${network_name}"
+            --env "PROFILE_DATABASE_URL=postgresql+asyncpg://profile_test:profile_test@${postgres_name}:5432/profile_test"
+            --env "PROFILE_REDIS_URL=redis://${valkey_name}:6379/0"
+            --env "INTERNAL_API_TOKEN=${service_token}"
+          )
+          docker run --rm "${service_args[@]}" "${IMAGE_NAME}" alembic upgrade head
+
+          docker run --detach \
             --name "${container_name}" \
             --publish "127.0.0.1:18080:${service_port}" \
+            "${service_args[@]}" \
             "${IMAGE_NAME}"
 
           for _ in {1..30}; do
@@ -189,3 +245,17 @@ jobs:
             --output "${ready_body}" \
             http://127.0.0.1:18080/health/ready
           grep --quiet '"status":"ready"' "${ready_body}"
+
+          profile_id="00000000-0000-4000-8000-000000000001"
+          for _ in 1 2; do
+            status_code="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              --request PUT --header "X-Service-Token: ${service_token}" \
+              --header 'Content-Type: application/json' \
+              --data '{"registered_at":"2026-01-01T00:00:00Z"}' \
+              "http://127.0.0.1:18080/internal/v1/profiles/${profile_id}")"
+            test "${status_code}" = 204
+          done
+          curl --fail --silent --show-error --head \
+            "http://127.0.0.1:18080/internal/v1/profiles/${profile_id}"
+          test "$(docker exec "${postgres_name}" psql -U profile_test -d profile_test -Atc \
+            'SELECT (SELECT count(*) FROM profiles), (SELECT count(*) FROM user_settings), (SELECT count(*) FROM idempotency_records)')" = '1|1|1'

@@ -1,0 +1,22 @@
+from __future__ import annotations
+
+import uuid
+from types import NoneType
+
+from pydantic import AwareDatetime, Field
+
+from app.application.commands.base import BaseCommand
+
+
+class CreateDefaultProfileCommand(BaseCommand[NoneType]):
+    """
+    Команда создания дефолтного профиля и настроек пользователя.
+    Используется при синхронной инициализации профиля из Identity Service.
+    """
+
+    user_id: uuid.UUID = Field(
+        description="Уникальный идентификатор пользователя (UUIDv7)",
+    )
+    registered_at: AwareDatetime = Field(
+        description="Метка времени регистрации пользователя с обязательной таймзоной (UTC)",
+    )
