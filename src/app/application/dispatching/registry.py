@@ -45,7 +45,7 @@ class CommandHandlerRegistry[DependenciesT]:
             raise RuntimeError("Command registry is frozen")
         if command_cls in self._handlers:
             raise ValueError(f"Command already registered: {command_cls.__name__}")
-        if not issubclass(command_cls, BaseCommand):  # pyright: ignore[reportUnnecessaryIsInstance]
+        if not issubclass(command_cls, BaseCommand):
             raise TypeError("command_cls must inherit BaseCommand")
         if not operation.strip() or len(operation) > 100:
             raise ValueError("operation must contain 1..100 non-blank characters")
@@ -53,7 +53,7 @@ class CommandHandlerRegistry[DependenciesT]:
             raise ValueError(f"Operation already registered: {operation}")
         if not callable(handler_factory):
             raise TypeError("handler_factory must be callable")
-        if result_type is Any:  # pyright: ignore[reportUnnecessaryComparison]
+        if result_type is Any:
             raise TypeError("A concrete result schema is required")
         codec = PydanticResultCodec(result_type, schema_version=result_schema_version)
         self._handlers[command_cls] = CommandHandlerRegistration(

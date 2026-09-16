@@ -39,8 +39,10 @@ class IdempotencyAppProvider(Provider):
 
     @dishka.provide
     async def redis(self, settings: RedisSettings) -> AsyncIterator[Redis]:
+        url = settings.url
+        assert url is not None
         client = Redis.from_url(
-            settings.url.get_secret_value(),
+            url.get_secret_value(),
             decode_responses=False,
             max_connections=settings.max_connections,
             socket_timeout=settings.socket_timeout,

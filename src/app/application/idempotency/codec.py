@@ -23,7 +23,7 @@ class PydanticResultCodec[ResultT]:
         # Pydantic умеет построить DTO из dict даже в strict-режиме.
         # Хендлер обязан вернуть сам DTO; преобразование из JSON нужно только replay.
         if (
-            isinstance(self._result_type, type)  # pyright: ignore[reportUnnecessaryIsInstance]
+            isinstance(self._result_type, type)
             and issubclass(self._result_type, BaseModel)
             and not isinstance(result, self._result_type)
         ):

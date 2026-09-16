@@ -88,7 +88,7 @@ class CommandBus[DependenciesT]:
         *,
         result_mode: ResultMode = ResultMode.REPLAYABLE,
     ) -> ResultT | None:
-        if not isinstance(result_mode, ResultMode):  # pyright: ignore[reportUnnecessaryIsInstance]
+        if not isinstance(result_mode, ResultMode):
             raise TypeError("result_mode must be a ResultMode")
         registration = self._handlers.get(type(command))
         if registration is None:

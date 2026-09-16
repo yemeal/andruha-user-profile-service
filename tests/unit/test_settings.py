@@ -153,7 +153,10 @@ def test_postgres_settings_requires_mandatory_configuration(
         PostgresSettings()
 
 
-def test_redis_settings_assembled_from_components() -> None:
+def test_redis_settings_assembled_from_components(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("TEST_IDEMPOTENCY_REDIS_URL", raising=False)
     settings = RedisSettings(host="cache.internal", port=6380, db=2)
     assert settings.url.get_secret_value() == "redis://cache.internal:6380/2"
 
@@ -173,6 +176,7 @@ def test_redis_settings_requires_mandatory_configuration(
         "PROFILE_REDIS_HOST",
         "VALKEY_URL",
         "PROFILE_VALKEY_URL",
+        "TEST_IDEMPOTENCY_REDIS_URL",
     ]:
         monkeypatch.delenv(var, raising=False)
 
