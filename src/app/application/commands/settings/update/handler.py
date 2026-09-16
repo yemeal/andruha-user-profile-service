@@ -27,7 +27,7 @@ class UpdateSettingsHandler:
             raise UserSettingsNotFoundError()
 
         if settings.version != command.expected_version:
-            raise SettingsVersionMismatchError()
+            raise SettingsVersionMismatchError(current_version=settings.version)
 
         privacy = PrivacySettings(
             who_can_see_avatar=(

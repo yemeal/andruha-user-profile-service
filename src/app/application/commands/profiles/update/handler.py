@@ -23,7 +23,7 @@ class UpdateProfileHandler:
             raise UserProfileNotFoundError()
 
         if profile.version != command.expected_version:
-            raise ProfileVersionMismatchError()
+            raise ProfileVersionMismatchError(current_version=profile.version)
 
         changed = profile.update_profile(
             now=self._clock(),

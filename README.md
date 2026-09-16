@@ -2,7 +2,7 @@
 
 ## Purpose and current status
 
-The service contains the profile/settings domain, eleven application handlers, transactional command dispatch, and PostgreSQL repositories, readers, durable idempotency and migrations. Business HTTP routes and the Kafka consumer are not connected yet. See [PostgreSQL infrastructure](docs/postgres-infrastructure.md) for configuration and real integration tests.
+The service contains the profile/settings domain, eleven application handlers, transactional command dispatch, and PostgreSQL repositories, readers, durable idempotency and migrations. Profile/settings HTTP reads and conditional writes, username search, local JWT verification are connected. Reads never create missing data. The Kafka consumer is not connected yet. See [PostgreSQL infrastructure](docs/postgres-infrastructure.md) for configuration and real integration tests.
 
 ## Responsibility and explicit non-responsibilities
 
@@ -15,7 +15,7 @@ It does not own credentials, authentication sessions, messages, media object byt
 - `domain`: aggregates, value objects and privacy invariants; independent of transports and storage.
 - `application`: command/query handlers, dispatch, idempotency and owned ports; depends on domain.
 - `infrastructure`: PostgreSQL/Redis adapters and dependency factories implementing application ports.
-- `entrypoints`: transport translation that will call application services.
+- `entrypoints`: transport translation through Dishka, application queries and transactional command dispatch.
 - `core`: configuration and cross-cutting logging only.
 
 The dependency direction is `entrypoints -> application -> domain` and `infrastructure -> application ports -> domain`.
@@ -26,7 +26,16 @@ The dependency direction is `entrypoints -> application -> domain` and `infrastr
 - `GET /health/live` - process liveness
 - `GET /health/ready` - initialized application readiness
 
-No business API or transport contract is available yet.
+- `GET /api/v1/profiles/me` - own profile, using the verified JWT `sub`
+- `GET /api/v1/profiles/{user_id}` - public profile with privacy rules
+- `POST /api/v1/profiles/batch` - ordered batch of public profiles
+- `PATCH /api/v1/profiles/me` - conditional profile update
+- `GET /api/v1/settings/me`, `PATCH /api/v1/settings/me` - own settings
+- `GET /api/v1/profiles?username=...` - exact username search
+- `HEAD /internal/v1/profiles/{user_id}` - internal existence check
+
+See [HTTP API](src/app/entrypoints/http/README.md) for authentication configuration,
+request/response contracts, and verification commands.
 
 ## Configuration variables
 
@@ -52,10 +61,10 @@ poetry run pytest
 docker build --target runtime --tag andruha/user-profile-service:local .
 ```
 
-.github/workflows/ci.yml runs lint, ty type checking, unit, handler and integration
+`.github/workflows/ci.yml` runs lint, ty type checking, unit, handler and integration
 tests, branch coverage >= 80%, runtime dependency audit, secret scanning, and a
 Docker smoke test. `.github/workflows/release.yml` publishes a verified image
-to GHCR only for a version tag. Business APIs remain deferred; their existing acceptance tests are intentionally red. PostgreSQL/Redis adapter tests require the environment described in the infrastructure guide.
+to GHCR only for a version tag. HTTP acceptance tests cover reads, writes and recovery with signed tokens; live HTTP tests also use PostgreSQL/Valkey when configured. PostgreSQL/Redis adapter tests require the environment described in the infrastructure guide.
 
 ## Canonical project material
 

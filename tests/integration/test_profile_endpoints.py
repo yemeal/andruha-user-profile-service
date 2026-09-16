@@ -1,218 +1,212 @@
-"""Integration tests for UserProfile HTTP endpoints (FastAPI)."""
+"""Writes, search and existence through real JWT and command dispatch."""
 
-import uuid
+from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
+from tests.integration.http_support import client as client
+from tests.integration.http_support import harness as harness
+from tests.integration.http_support import tokens as tokens
 
-from app.entrypoints.http.main import create_app
-
-
-@pytest.fixture
-def client() -> TestClient:
-    app = create_app()
-    with TestClient(app) as test_client:
-        yield test_client
+pytestmark = pytest.mark.integration
 
 
-def auth_headers(user_id: uuid.UUID) -> dict[str, str]:
-    """Helper to mock authenticated request headers/cookies."""
-    return {"Authorization": f"Bearer mock_token_for_{user_id}"}
-
-
-@pytest.mark.integration
-class TestGetOwnProfileEndpoint:
-    """Tests for GET /api/v1/profiles/me."""
-
-    def test_get_own_profile_unauthorized_without_token(
-        self, client: TestClient
-    ) -> None:
-        response = client.get("/api/v1/profiles/me")
-        assert response.status_code == 401
-
-    def test_get_own_profile_returns_etag_and_cache_control(
-        self, client: TestClient
-    ) -> None:
-        user_id = uuid.uuid4()
-        response = client.get(
-            "/api/v1/profiles/me",
-            headers=auth_headers(user_id),
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["user_id"] == str(user_id)
-        assert data["display_name"] == "Пользователь"
-        assert data["version"] == 1
-        assert "ETag" in response.headers
-        assert response.headers["ETag"].strip('"') == "1"
-        assert "no-cache" in response.headers.get("Cache-Control", "")
-
-
-@pytest.mark.integration
-class TestPatchOwnProfileEndpoint:
-    """Tests for PATCH /api/v1/profiles/me."""
-
-    def test_patch_without_if_match_returns_428_precondition_required(
-        self, client: TestClient
-    ) -> None:
-        user_id = uuid.uuid4()
-        response = client.patch(
-            "/api/v1/profiles/me",
-            json={"display_name": "New Name"},
-            headers=auth_headers(user_id),
-            # Missing If-Match header
-        )
-
-        assert response.status_code == 428
-
-    def test_patch_with_stale_if_match_returns_409_conflict(
-        self, client: TestClient
-    ) -> None:
-        user_id = uuid.uuid4()
-        # Initialize profile (version 1)
-        client.get("/api/v1/profiles/me", headers=auth_headers(user_id))
-
-        # Stale If-Match: "0" instead of "1"
-        response = client.patch(
-            "/api/v1/profiles/me",
-            json={"display_name": "New Name"},
-            headers={**auth_headers(user_id), "If-Match": '"0"'},
-        )
-
-        assert response.status_code == 409
-        data = response.json()
-        assert data.get("current_version") == 1 or "version" in str(data)
-
-    def test_patch_with_invalid_display_name_returns_422(
-        self, client: TestClient
-    ) -> None:
-        user_id = uuid.uuid4()
-        response = client.patch(
-            "/api/v1/profiles/me",
-            json={"display_name": "Alex 😊"},  # emoji forbidden
-            headers={**auth_headers(user_id), "If-Match": '"1"'},
-        )
-
-        assert response.status_code == 422
-
-    def test_patch_with_credential_fields_rejected(self, client: TestClient) -> None:
-        user_id = uuid.uuid4()
-        # Attempting to inject email / password into profile
-        response = client.patch(
-            "/api/v1/profiles/me",
-            json={"email": "attacker@example.com", "display_name": "Valid Name"},
-            headers={**auth_headers(user_id), "If-Match": '"1"'},
-        )
-
-        assert response.status_code == 422
-
-    def test_patch_success_returns_updated_profile_and_new_etag(
-        self, client: TestClient
-    ) -> None:
-        user_id = uuid.uuid4()
-        # 1. GET initial profile
-        get_res = client.get("/api/v1/profiles/me", headers=auth_headers(user_id))
-        assert get_res.status_code == 200
-        initial_etag = get_res.headers["ETag"]
-
-        # 2. PATCH profile
-        patch_res = client.patch(
-            "/api/v1/profiles/me",
-            json={
-                "display_name": "Алексей Смирнов",
-                "bio": "Building reliable distributed systems",
-                "username": "alex_smirnov",
-            },
-            headers={**auth_headers(user_id), "If-Match": initial_etag},
-        )
-
-        assert patch_res.status_code == 200
-        updated = patch_res.json()
-        assert updated["display_name"] == "Алексей Смирнов"
-        assert updated["bio"] == "Building reliable distributed systems"
-        assert updated["username"] == "alex_smirnov"
-        assert updated["version"] == 2
-        assert patch_res.headers["ETag"].strip('"') == "2"
-
-
-@pytest.mark.integration
-class TestPublicProfileEndpoints:
-    """Tests for public reads, search, batch, and internal HEAD check."""
-
-    def test_get_public_profile_by_id(self, client: TestClient) -> None:
-        user_id = uuid.uuid4()
-        # Create user profile
-        client.get("/api/v1/profiles/me", headers=auth_headers(user_id))
-
-        # Query public profile
-        res = client.get(f"/api/v1/profiles/{user_id}")
-        assert res.status_code == 200
-        data = res.json()
-        assert data["user_id"] == str(user_id)
-        assert data["display_name"] == "Пользователь"
-        assert "password" not in data
-        assert "email" not in data
-
-    def test_get_public_profile_not_found(self, client: TestClient) -> None:
-        unknown_id = uuid.uuid4()
-        res = client.get(f"/api/v1/profiles/{unknown_id}")
-        assert res.status_code == 404
-
-    def test_search_profile_by_username_exact_match(self, client: TestClient) -> None:
-        user_id = uuid.uuid4()
-        # Update username to custom
-        client.get("/api/v1/profiles/me", headers=auth_headers(user_id))
+def test_profile_patch_replay_and_conflict(client, harness, tokens):
+    harness.seed_profile()
+    auth = tokens.authorization(harness.user_id)
+    assert client.get("/api/v1/profiles/me", headers=auth).status_code == 200
+    headers = tokens.mutation(harness.user_id)
+    payload = {
+        "display_name": "Alex Smith",
+        "bio": "Biography",
+        "username": "super_coder",
+    }
+    response = client.patch("/api/v1/profiles/me", headers=headers, json=payload)
+    assert response.status_code == 200
+    assert response.json()["version"] == 2
+    assert response.json()["display_name"] == "Alex Smith"
+    assert response.headers["etag"] == '"2"'
+    replay = client.patch("/api/v1/profiles/me", headers=headers, json=payload)
+    assert replay.status_code == 200 and replay.json() == response.json()
+    assert replay.headers["etag"] == response.headers["etag"]
+    assert client.get("/api/v1/profiles/me", headers=auth).json()["version"] == 2
+    assert (
         client.patch(
+            "/api/v1/profiles/me", headers=headers, json={"bio": "Different"}
+        ).status_code
+        == 409
+    )
+
+
+def test_profile_noop_and_stale_version(client, harness, tokens):
+    harness.seed_profile(display_name="Original", version=3)
+    result = client.patch(
+        "/api/v1/profiles/me",
+        headers=tokens.mutation(harness.user_id, version=3),
+        json={"display_name": "Original"},
+    )
+    assert result.status_code == 200 and result.json()["version"] == 3
+    stale = client.patch(
+        "/api/v1/profiles/me",
+        headers=tokens.mutation(harness.user_id),
+        json={"display_name": "Overwrite"},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["parameters"]["current_version"] == 3
+    assert harness.profiles._rows[harness.user_id].display_name == "Original"
+
+
+@pytest.mark.parametrize(
+    "etag, status",
+    [
+        (None, 428),
+        ('W/"1"', 400),
+        ('"0"', 400),
+        ('"-1"', 400),
+        ("1", 400),
+        ("*", 400),
+        ('"1", "2"', 400),
+        ('"9223372036854775808"', 400),
+    ],
+)
+@pytest.mark.parametrize("resource", ["profiles", "settings"])
+def test_patch_version_headers(client, harness, tokens, etag, status, resource):
+    headers = tokens.mutation(harness.user_id)
+    if etag is None:
+        del headers["If-Match"]
+    else:
+        headers["If-Match"] = etag
+    body = {"bio": "New"} if resource == "profiles" else {"theme": "dark"}
+    assert (
+        client.patch(f"/api/v1/{resource}/me", headers=headers, json=body).status_code
+        == status
+    )
+    assert harness.profiles._rows == harness.settings._rows == {}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"display_name": None},
+        {"username": None},
+        {"display_name": "Alex \U0001f60a"},
+        {"display_name": "   "},
+        {"bio": "line\nbreak"},
+        {"username": "admin"},
+        {"username": "invalid name"},
+        {"display_name": "Valid", "email": "private@example.com"},
+        {"user_id": str(uuid4())},
+        {"version": 1},
+        {"avatar_key": "any"},
+    ],
+)
+def test_profile_invalid_input_is_atomic(client, harness, tokens, payload):
+    harness.seed_profile(display_name="Original")
+    response = client.patch(
+        "/api/v1/profiles/me", headers=tokens.mutation(harness.user_id), json=payload
+    )
+    assert response.status_code == 422
+    assert harness.profiles._rows[harness.user_id].display_name == "Original"
+    assert harness.profiles._rows[harness.user_id].version == 1
+
+
+@pytest.mark.parametrize("value", [None, ""])
+def test_explicit_bio_clear(client, harness, tokens, value):
+    harness.seed_profile(bio="Old bio")
+    response = client.patch(
+        "/api/v1/profiles/me",
+        headers=tokens.mutation(harness.user_id),
+        json={"bio": value},
+    )
+    assert response.status_code == 200 and response.json()["bio"] is None
+
+
+def test_username_collision_rolls_back(client, harness, tokens):
+    harness.seed_profile(display_name="Original")
+    harness.seed_profile(user_id=harness.other_user_id, username="taken_name")
+    response = client.patch(
+        "/api/v1/profiles/me",
+        headers=tokens.mutation(harness.user_id),
+        json={"display_name": "Changed", "username": "taken_name"},
+    )
+    assert response.status_code == 409
+    assert harness.profiles._rows[harness.user_id].display_name == "Original"
+
+
+@pytest.mark.parametrize(
+    "resource, payload", [("profiles", {"bio": "New"}), ("settings", {"theme": "dark"})]
+)
+def test_patch_requires_jwt_and_key(client, harness, tokens, resource, payload):
+    url = f"/api/v1/{resource}/me"
+    assert client.patch(url, json=payload).status_code == 401
+    headers = tokens.authorization(harness.user_id) | {"If-Match": '"1"'}
+    assert client.patch(url, headers=headers, json=payload).status_code == 422
+    for key in ("", "x" * 256):
+        headers["Idempotency-Key"] = key
+        assert client.patch(url, headers=headers, json=payload).status_code == 422
+
+
+def test_actor_scopes_mutations_and_idempotency(client, harness, tokens):
+    for user_id in (harness.user_id, harness.other_user_id):
+        harness.seed_profile(user_id=user_id)
+        result = client.patch(
             "/api/v1/profiles/me",
-            json={"username": "super_coder"},
-            headers={**auth_headers(user_id), "If-Match": '"1"'},
+            params={"user_id": str(harness.other_user_id)},
+            headers=tokens.mutation(user_id, key="same-key"),
+            json={"bio": str(user_id)},
         )
+        assert result.status_code == 200 and result.json()["user_id"] == str(user_id)
+    assert harness.profiles._rows[harness.user_id].bio == str(harness.user_id)
 
-        # Search by lowercase and uppercase query
-        res = client.get("/api/v1/profiles?username=super_coder")
-        assert res.status_code == 200
-        assert res.json()["username"] == "super_coder"
 
-        res_case = client.get("/api/v1/profiles?username=SUPER_CODER")
-        assert res_case.status_code == 200
-        assert res_case.json()["username"] == "super_coder"
-
-        # Non-existing username
-        res_not_found = client.get("/api/v1/profiles?username=unknown_user")
-        assert res_not_found.status_code == 404
-
-    def test_batch_profiles_endpoint(self, client: TestClient) -> None:
-        u1 = uuid.uuid4()
-        u2 = uuid.uuid4()
-        client.get("/api/v1/profiles/me", headers=auth_headers(u1))
-        client.get("/api/v1/profiles/me", headers=auth_headers(u2))
-
-        res = client.post(
-            "/api/v1/profiles/batch",
-            json={"user_ids": [str(u1), str(u2)]},
+def test_search_normalizes_username_and_applies_privacy(client, harness, tokens):
+    harness.seed_profile(username="super_coder")
+    harness.seed_settings()
+    for name in ("super_coder", "SUPER_CODER"):
+        response = client.get("/api/v1/profiles", params={"username": name})
+        assert (
+            response.status_code == 200 and response.json()["username"] == "super_coder"
         )
-        assert res.status_code == 200
-        items = res.json()
-        assert len(items) == 2
+        assert response.headers["cache-control"] == "no-store"
+    response = client.patch(
+        "/api/v1/settings/me",
+        headers=tokens.mutation(harness.user_id),
+        json={"privacy": {"who_can_find_by_username": "NOBODY"}},
+    )
+    assert response.status_code == 200
+    assert client.get("/api/v1/profiles?username=super_coder").status_code == 404
+    assert (
+        client.get(
+            "/api/v1/profiles?username=super_coder",
+            headers=tokens.authorization(harness.user_id),
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/v1/profiles?username=unknown_user").status_code == 404
 
-    def test_batch_profiles_exceeding_100_rejected(self, client: TestClient) -> None:
-        ids = [str(uuid.uuid4()) for _ in range(101)]
-        res = client.post(
-            "/api/v1/profiles/batch",
-            json={"user_ids": ids},
-        )
-        assert res.status_code == 422
 
-    def test_internal_head_profile_check(self, client: TestClient) -> None:
-        user_id = uuid.uuid4()
-        # Before creation -> 404
-        head_missing = client.head(f"/internal/v1/profiles/{user_id}")
-        assert head_missing.status_code == 404
+@pytest.mark.parametrize(
+    "query", ["", "?username=x", "?username=invalid!", "?username=admin"]
+)
+def test_search_validates_username(client, query):
+    assert client.get("/api/v1/profiles" + query).status_code == 422
 
-        # Provision profile
-        client.get("/api/v1/profiles/me", headers=auth_headers(user_id))
 
-        # After creation -> 200
-        head_exists = client.head(f"/internal/v1/profiles/{user_id}")
-        assert head_exists.status_code == 200
+@pytest.mark.parametrize("missing", ["profiles", "settings"])
+def test_reads_preserve_remaining_data_when_one_row_is_missing(
+    client, harness, tokens, missing
+):
+    headers = tokens.authorization(harness.user_id)
+    harness.seed_profile(display_name="Keep Name", version=4)
+    harness.seed_settings(theme="dark", version=6)
+    repository = harness.profiles if missing == "profiles" else harness.settings
+    del repository._rows[harness.user_id]
+    first = client.get(f"/api/v1/{missing}/me", headers=headers)
+    assert first.status_code == 404
+    if missing == "profiles":
+        assert harness.settings._rows[harness.user_id].theme == "dark"
+        assert harness.settings._rows[harness.user_id].version == 6
+    else:
+        assert harness.profiles._rows[harness.user_id].display_name == "Keep Name"
+        assert harness.profiles._rows[harness.user_id].version == 4
+    assert harness.user_id not in repository._rows

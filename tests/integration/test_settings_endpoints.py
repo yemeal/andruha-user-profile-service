@@ -1,97 +1,132 @@
-"""Integration tests for UserSettings HTTP endpoints (FastAPI)."""
-
-import uuid
+"""Settings contracts with signed JWT and the production command bus."""
 
 import pytest
-from fastapi.testclient import TestClient
+from tests.integration.http_support import client as client
+from tests.integration.http_support import harness as harness
+from tests.integration.http_support import tokens as tokens
 
-from app.entrypoints.http.main import create_app
-
-
-@pytest.fixture
-def client() -> TestClient:
-    app = create_app()
-    with TestClient(app) as test_client:
-        yield test_client
+pytestmark = pytest.mark.integration
 
 
-def auth_headers(user_id: uuid.UUID) -> dict[str, str]:
-    return {"Authorization": f"Bearer mock_token_for_{user_id}"}
+def test_settings_require_authentication(client):
+    assert client.get("/api/v1/settings/me").status_code == 401
 
 
-@pytest.mark.integration
-class TestUserSettingsEndpoints:
-    """Tests for GET and PATCH /api/v1/settings/me."""
+def test_settings_get_reads_existing_settings(client, harness, tokens):
+    harness.seed_settings()
+    response = client.get(
+        "/api/v1/settings/me", headers=tokens.authorization(harness.user_id)
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user_id"] == str(harness.user_id)
+    assert data["theme"] == "system" and data["locale"] == "ru"
+    assert data["timezone"] == "Europe/Moscow"
+    assert all(value == "ALL" for value in data["privacy"].values())
+    assert response.headers["etag"] == '"1"'
+    assert response.headers["cache-control"] == "private, no-cache"
+    assert harness.profiles._rows == {}
 
-    def test_get_settings_unauthorized_without_token(self, client: TestClient) -> None:
-        response = client.get("/api/v1/settings/me")
-        assert response.status_code == 401
 
-    def test_get_settings_returns_defaults_lazy_provisioned(
-        self, client: TestClient
-    ) -> None:
-        user_id = uuid.uuid4()
-        response = client.get(
-            "/api/v1/settings/me",
-            headers=auth_headers(user_id),
-        )
+def test_settings_get_does_not_create_missing_rows(client, harness, tokens):
+    response = client.get(
+        "/api/v1/settings/me", headers=tokens.authorization(harness.user_id)
+    )
+    assert response.status_code == 404
+    assert harness.profiles._rows == harness.settings._rows == {}
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["user_id"] == str(user_id)
-        assert data["theme"] == "system"
-        assert data["locale"] == "ru"
-        assert data["timezone"] == "Europe/Moscow"
-        assert data["privacy"]["who_can_see_avatar"] == "ALL"
-        assert data["privacy"]["who_can_find_by_username"] == "ALL"
-        assert data["privacy"]["who_can_see_bio"] == "ALL"
 
-    def test_patch_settings_success(self, client: TestClient) -> None:
-        user_id = uuid.uuid4()
-        # Initialize
-        client.get("/api/v1/settings/me", headers=auth_headers(user_id))
+def test_settings_patch_returns_404_when_missing(client, harness, tokens):
+    response = client.patch(
+        "/api/v1/settings/me",
+        headers=tokens.mutation(harness.user_id),
+        json={"theme": "dark"},
+    )
+    assert response.status_code == 404
+    assert harness.profiles._rows == harness.settings._rows == {}
 
-        response = client.patch(
-            "/api/v1/settings/me",
-            json={
-                "theme": "dark",
-                "locale": "en",
-                "timezone": "America/New_York",
-                "privacy": {
-                    "who_can_see_avatar": "NOBODY",
-                    "who_can_find_by_username": "ALL",
-                    "who_can_see_bio": "NOBODY",
-                },
-            },
-            headers=auth_headers(user_id),
-        )
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["theme"] == "dark"
-        assert data["locale"] == "en"
-        assert data["timezone"] == "America/New_York"
-        assert data["privacy"]["who_can_see_avatar"] == "NOBODY"
-        assert data["privacy"]["who_can_see_bio"] == "NOBODY"
+def test_settings_patch_merges_privacy_and_replays(client, harness, tokens):
+    harness.seed_profile()
+    harness.seed_settings(
+        privacy={
+            "who_can_see_avatar": "NOBODY",
+            "who_can_see_bio": "ALL",
+            "who_can_find_by_username": "ALL",
+        }
+    )
+    headers = tokens.mutation(harness.user_id)
+    payload = {
+        "theme": "dark",
+        "locale": "en",
+        "timezone": "America/New_York",
+        "privacy": {"who_can_see_bio": "NOBODY"},
+    }
+    response = client.patch("/api/v1/settings/me", headers=headers, json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["theme"] == "dark" and data["locale"] == "en"
+    assert data["timezone"] == "America/New_York"
+    assert data["privacy"] == {
+        "who_can_see_avatar": "NOBODY",
+        "who_can_see_bio": "NOBODY",
+        "who_can_find_by_username": "ALL",
+    }
+    assert data["version"] == 2 and response.headers["etag"] == '"2"'
+    replay = client.patch("/api/v1/settings/me", headers=headers, json=payload)
+    assert replay.status_code == 200 and replay.json() == data
+    assert (
+        client.patch(
+            "/api/v1/settings/me", headers=headers, json={"theme": "light"}
+        ).status_code
+        == 409
+    )
 
-    def test_patch_settings_invalid_locale_returns_422(
-        self, client: TestClient
-    ) -> None:
-        user_id = uuid.uuid4()
-        response = client.patch(
-            "/api/v1/settings/me",
-            json={"locale": "invalid_locale"},
-            headers=auth_headers(user_id),
-        )
 
-        assert response.status_code == 422
+def test_settings_stale_patch(client, harness, tokens):
+    harness.seed_settings(theme="dark", version=2)
+    response = client.patch(
+        "/api/v1/settings/me",
+        headers=tokens.mutation(harness.user_id),
+        json={"theme": "light"},
+    )
+    assert response.status_code == 409
+    assert response.json()["parameters"]["current_version"] == 2
+    assert harness.settings._rows[harness.user_id].theme == "dark"
 
-    def test_patch_settings_invalid_theme_returns_422(self, client: TestClient) -> None:
-        user_id = uuid.uuid4()
-        response = client.patch(
-            "/api/v1/settings/me",
-            json={"theme": "neon"},
-            headers=auth_headers(user_id),
-        )
 
-        assert response.status_code == 422
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"theme": "neon"},
+        {"locale": "invalid_locale"},
+        {"timezone": "Invalid/Zone"},
+        {"privacy": {}},
+        {"privacy": {"who_can_see_bio": None}},
+        {"privacy": {"who_can_see_bio": "CONTACTS"}},
+        {"privacy": {"unknown": "ALL"}},
+        {"theme": None},
+        {"privacy": None},
+        {"password": "secret"},
+        {"who_can_see_bio": "NOBODY"},
+    ],
+)
+def test_invalid_settings_does_not_mutate(client, harness, tokens, payload):
+    harness.seed_settings(theme="dark")
+    response = client.patch(
+        "/api/v1/settings/me", headers=tokens.mutation(harness.user_id), json=payload
+    )
+    assert response.status_code == 422
+    assert harness.settings._rows[harness.user_id].theme == "dark"
+    assert harness.settings._rows[harness.user_id].version == 1
+
+
+def test_unchanged_settings_keep_version(client, harness, tokens):
+    harness.seed_settings(theme="dark")
+    response = client.patch(
+        "/api/v1/settings/me",
+        headers=tokens.mutation(harness.user_id),
+        json={"theme": "dark"},
+    )
+    assert response.status_code == 200 and response.json()["version"] == 1
