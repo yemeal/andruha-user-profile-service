@@ -13,6 +13,8 @@ from app.core.settings.base import (
     read_port,
 )
 from app.core.settings.idempotency import IdempotencySettings
+from app.core.settings.internal_api import InternalAPISettings
+from app.core.settings.jwt import JWTSettings
 from app.core.settings.postgres import PostgresSettings
 from app.core.settings.redis import RedisSettings
 
@@ -24,6 +26,8 @@ class Settings(BaseModel):
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     idempotency: IdempotencySettings = Field(default_factory=IdempotencySettings)
+    jwt: JWTSettings = Field(default_factory=JWTSettings)
+    internal_api: InternalAPISettings = Field(default_factory=InternalAPISettings)
 
 
 @lru_cache(maxsize=1)
@@ -35,6 +39,8 @@ __all__ = [
     "AppSettings",
     "BaseContextSettings",
     "IdempotencySettings",
+    "InternalAPISettings",
+    "JWTSettings",
     "PostgresSettings",
     "RedisSettings",
     "Settings",

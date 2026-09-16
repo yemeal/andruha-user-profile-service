@@ -1,6 +1,7 @@
 import pytest
 
 from app.core.settings import (
+    InternalAPISettings,
     PostgresSettings,
     RedisSettings,
     _read_bool,
@@ -8,6 +9,14 @@ from app.core.settings import (
     _read_port,
     get_settings,
 )
+
+
+def test_internal_service_token_uses_core_environment_and_is_redacted(monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_TOKEN", "private-service-credential")
+    settings = InternalAPISettings()
+    assert settings.token is not None
+    assert settings.token.get_secret_value() == "private-service-credential"
+    assert "private-service-credential" not in repr(settings)
 
 
 @pytest.mark.parametrize("raw_value", ["1", "true", "TRUE", " yes ", "on"])

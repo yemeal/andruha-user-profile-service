@@ -45,6 +45,8 @@ from app.application.queries.settings.get_my.handler import GetMySettingsHandler
 from app.core.settings import (
     AppSettings,
     IdempotencySettings,
+    InternalAPISettings,
+    JWTSettings,
     PostgresSettings,
     RedisSettings,
     Settings,
@@ -106,6 +108,8 @@ async def test_container_resolves_all_settings() -> None:
         assert await container.get(PostgresSettings) == settings.postgres
         assert await container.get(RedisSettings) == settings.redis
         assert await container.get(IdempotencySettings) == settings.idempotency
+        assert await container.get(JWTSettings) == settings.jwt
+        assert await container.get(InternalAPISettings) == settings.internal_api
     finally:
         await container.close()
 

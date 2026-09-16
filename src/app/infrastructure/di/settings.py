@@ -4,6 +4,8 @@ from dishka import Provider, Scope
 from app.core.settings import (
     AppSettings,
     IdempotencySettings,
+    InternalAPISettings,
+    JWTSettings,
     PostgresSettings,
     RedisSettings,
     Settings,
@@ -33,3 +35,11 @@ class SettingsProvider(Provider):
     @dishka.provide
     def idempotency_settings(self, settings: Settings) -> IdempotencySettings:
         return settings.idempotency
+
+    @dishka.provide
+    def jwt_settings(self, settings: Settings) -> JWTSettings:
+        return settings.jwt
+
+    @dishka.provide
+    def internal_api_settings(self, settings: Settings) -> InternalAPISettings:
+        return settings.internal_api

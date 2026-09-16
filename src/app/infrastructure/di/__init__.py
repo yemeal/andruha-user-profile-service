@@ -1,4 +1,4 @@
-from dishka import AsyncContainer, make_async_container
+from dishka import AsyncContainer, Provider, make_async_container
 
 from app.infrastructure.di.commands import (
     CommandBusProvider,
@@ -23,7 +23,7 @@ from app.infrastructure.di.repositories import RepositoriesProvider
 from app.infrastructure.di.settings import SettingsProvider
 
 
-def create_container() -> AsyncContainer:
+def create_container(*extra_providers: Provider) -> AsyncContainer:
     return make_async_container(
         SettingsProvider(),
         DatabaseAppProvider(),
@@ -33,6 +33,7 @@ def create_container() -> AsyncContainer:
         RepositoriesProvider(),
         CommandsProvider(),
         QueriesProvider(),
+        *extra_providers,
     )
 
 
