@@ -192,6 +192,25 @@ def test_search_validates_username(client, query):
     assert client.get("/api/v1/profiles" + query).status_code == 422
 
 
+def test_internal_head_and_public_reads_never_provision(client, harness, tokens):
+    url = f"/internal/v1/profiles/{harness.user_id}"
+    missing = client.head(url)
+    assert missing.status_code == 404 and missing.content == b""
+    assert client.get(f"/api/v1/profiles/{harness.user_id}").status_code == 404
+    assert harness.profiles._rows == {}
+    assert (
+        client.get(
+            "/api/v1/profiles/me", headers=tokens.authorization(harness.user_id)
+        ).status_code
+        == 404
+    )
+    harness.seed_profile()
+    exists = client.head(url)
+    assert exists.status_code == 200 and exists.content == b""
+    assert exists.headers["cache-control"] == "no-store"
+    assert client.head("/internal/v1/profiles/invalid").status_code == 422
+
+
 @pytest.mark.parametrize("missing", ["profiles", "settings"])
 def test_reads_preserve_remaining_data_when_one_row_is_missing(
     client, harness, tokens, missing

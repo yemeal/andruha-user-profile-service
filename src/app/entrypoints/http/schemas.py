@@ -3,7 +3,7 @@
 from typing import ClassVar, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.value_objects.locale import Locale
 from app.domain.value_objects.privacy import PrivacyScope
@@ -14,6 +14,12 @@ class BatchProfilesRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     user_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+
+class ProvisionProfileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    registered_at: AwareDatetime
 
 
 class PatchRequest(BaseModel):

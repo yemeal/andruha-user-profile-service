@@ -11,7 +11,7 @@ from app.application.commands.base import BaseCommand
 class CreateDefaultProfileCommand(BaseCommand[NoneType]):
     """
     Команда создания дефолтного профиля и настроек пользователя.
-    Используется при обработке входящих событий регистрации и в механизме Lazy JIT Repair.
+    Используется при синхронной инициализации профиля из Identity Service.
     """
 
     user_id: uuid.UUID = Field(

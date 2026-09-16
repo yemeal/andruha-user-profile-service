@@ -15,6 +15,7 @@ from app.entrypoints.http.exception_handlers import register_exception_handlers
 from app.entrypoints.http.middlewares import RequestIdMiddleware
 from app.entrypoints.http.routers import (
     health_router,
+    internal_router,
     profiles_router,
     settings_router,
 )
@@ -53,5 +54,6 @@ def create_app(container: AsyncContainer | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(profiles_router)
     app.include_router(settings_router)
+    app.include_router(internal_router)
     setup_dishka(app_container, app)
     return app

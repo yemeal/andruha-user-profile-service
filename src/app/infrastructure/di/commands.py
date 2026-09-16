@@ -195,7 +195,7 @@ def build_command_bus(
 ) -> CommandBus[CommandDependencies]:
     """Use existing durable execution for provisioning and caller policies for mutations.
 
-    Registration callers supply event identity through CommandContext and dispatch
+    Registration callers supply operation identity through CommandContext and dispatch
     with COMPLETION_ONLY. Repositories share the durable execution transaction.
     """
     registry = build_command_registry(

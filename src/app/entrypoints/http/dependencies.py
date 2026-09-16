@@ -1,6 +1,7 @@
 """Map HTTP credentials to the viewer identity used by application queries."""
 
 import re
+from secrets import compare_digest
 from typing import Annotated
 from uuid import UUID
 
@@ -9,6 +10,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.application.dispatching.context import CommandContext
+from app.core.settings import InternalAPISettings
 from app.entrypoints.http.security import AccessTokenVerifier, InvalidAccessTokenError
 
 bearer = HTTPBearer(auto_error=False)
@@ -84,3 +86,19 @@ def command_context(
 
 
 HTTPCommandContext = Annotated[CommandContext, Depends(command_context)]
+
+
+@inject
+async def require_identity_service(
+    settings: FromDishka[InternalAPISettings],
+    x_service_token: Annotated[str | None, Header()] = None,
+) -> None:
+    expected = settings.token.get_secret_value() if settings.token else None
+    if not expected:
+        raise HTTPException(
+            status_code=503, detail="Service authentication unavailable"
+        )
+    if x_service_token is None or not compare_digest(
+        x_service_token.encode(), expected.encode()
+    ):
+        raise HTTPException(status_code=401, detail="Invalid or missing service token")

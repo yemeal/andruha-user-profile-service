@@ -45,8 +45,9 @@ PostgreSQL or assert that JWT has been configured.
 | `GET /api/v1/profiles/{user_id}` | Optional | `PublicProfileDTO`, `Cache-Control: no-store` |
 | `POST /api/v1/profiles/batch` | Optional | Array of `PublicProfileDTO`, `Cache-Control: no-store` |
 
-All GET routes are pure reads. A missing owner profile or settings returns
-404; reading never creates default rows.
+All GET routes and HEAD are pure reads. A missing owner profile or settings returns
+404; reading never creates default rows. Identity provisions both rows synchronously
+before completing registration.
 
 Additional routes:
 
@@ -56,6 +57,28 @@ Additional routes:
 | `GET /api/v1/settings/me` | JWT required; SettingsDTO with ETag and private cache |
 | `PATCH /api/v1/settings/me` | JWT required; settings update |
 | `GET /api/v1/profiles?username=...` | Optional JWT; exact, case-insensitive search with privacy |
+| `HEAD /internal/v1/profiles/{user_id}` | 200/404, empty body, no-store |
+| `PUT /internal/v1/profiles/{user_id}` | Identity service token; creates default profile and settings; 204 |
+
+The internal path must not be published by the gateway. PUT requires `X-Service-Token`
+matching `INTERNAL_API_TOKEN`; configure the same secret as Identity's
+`PROFILE_SERVICE_TOKEN`. `InternalAPISettings` lives in core/settings and is supplied
+through Dishka. Missing token configuration returns 503; absent or invalid credentials
+return 401. HEAD retains its existing private-network contract.
+
+PUT accepts only `{"registered_at":"2026-01-01T00:00:00Z"}` with a timezone-aware
+registration timestamp. It dispatches `CreateDefaultProfileCommand` through the
+existing CommandBus with COMPLETION_ONLY. Profile and settings creation is atomic;
+INSERT ON CONFLICT preserves existing rows and their versions. The trusted
+idempotency scope is `identity:profile-provisioning`, with the user UUID as key.
+Retries must retain both UUID and timestamp. An identical completed call returns
+204; conflicting payload or in-flight duplicate returns 409 (the latter includes
+Retry-After). Identity may retry transient failures with the original payload.
+
+This is initialization, not data recovery: retained completion markers intentionally
+do not recreate manually deleted rows. Historical missing profiles require a separate
+operational reconciliation before enforcing the registration invariant. The call
+does not make Identity and Profile databases a single atomic transaction.
 
 ## Conditional writes
 
@@ -121,7 +144,7 @@ middleware. Responses retain `X-Request-Id`.
 ## Checks
 
 ```powershell
-poetry run pytest tests/unit/test_http_security.py tests/integration/test_profile_reads.py tests/integration/test_profile_endpoints.py tests/integration/test_settings_endpoints.py tests/integration/test_http_bootstrap.py
+poetry run pytest tests/unit/test_http_security.py tests/integration/test_profile_reads.py tests/integration/test_profile_endpoints.py tests/integration/test_settings_endpoints.py tests/integration/test_internal_provisioning.py tests/integration/test_http_bootstrap.py
 poetry run ruff check .
 poetry run ruff format --check .
 ```
@@ -129,3 +152,7 @@ poetry run ruff format --check .
 HTTP acceptance tests exercise real signed tokens, application handlers, and
 Dishka with isolated in-memory readers. Existing PostgreSQL/Valkey integration
 tests separately validate the persistence adapters. The HTTP write tests use the production command bus and storage-port fakes.
+`test_profile_http_postgres.py` exercises the default DI providers, concurrent
+provisioning/OCC, durable replay, rollback and late registration with actual services.
+It uses TEST_PROFILE_POSTGRES_DSN and TEST_IDEMPOTENCY_REDIS_URL, with isolated
+schemas and key namespaces.

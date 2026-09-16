@@ -2,7 +2,7 @@
 
 ## Purpose and current status
 
-The service contains the profile/settings domain, eleven application handlers, transactional command dispatch, and PostgreSQL repositories, readers, durable idempotency and migrations. Profile/settings HTTP reads and conditional writes, username search, local JWT verification are connected. Reads never create missing data. The Kafka consumer is not connected yet. See [PostgreSQL infrastructure](docs/postgres-infrastructure.md) for configuration and real integration tests.
+The service contains the profile/settings domain, eleven application handlers, transactional command dispatch, and PostgreSQL repositories, readers, durable idempotency and migrations. Profile/settings HTTP reads and conditional writes, username search, internal existence checks, local JWT verification and synchronous registration provisioning are connected. Identity creates the profile and settings through the authenticated internal API before completing registration. Reads never create missing data. The Kafka consumer is not connected yet. See [PostgreSQL infrastructure](docs/postgres-infrastructure.md) for configuration and real integration tests.
 
 ## Responsibility and explicit non-responsibilities
 
