@@ -1,0 +1,6 @@
+# Valkey Docker image tags in the original infrastructure documentation and CI.
+b14af9a8760ce67acf16681cd769a2297e1298a9:docs/postgres-infrastructure.md:generic-api-key:85
+153e8e250aab977da7e62812cc1519e77dc87f2e:.github/workflows/ci.yml:generic-api-key:43
+
+# Literal idempotency key and scope in a command-result unit test.
+0e76915b12c3b6ad3896c49bd0e33cedaaca4221:tests/unit/idempotency/test_command_result_contract.py:generic-api-key:54
