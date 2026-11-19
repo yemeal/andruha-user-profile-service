@@ -11,15 +11,15 @@ REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
 
 
 @pytest.mark.integration
-def test_health_endpoints_are_ready_inside_lifespan() -> None:
+def test_health_distinguishes_live_process_from_unconfigured_dependencies() -> None:
     with TestClient(create_app()) as client:
         live_response = client.get("/health/live")
         ready_response = client.get("/health/ready")
 
     assert live_response.status_code == 200
     assert live_response.json() == {"status": "ok"}
-    assert ready_response.status_code == 200
-    assert ready_response.json() == {"status": "ready"}
+    assert ready_response.status_code == 503
+    assert ready_response.json() == {"status": "unavailable"}
 
 
 @pytest.mark.integration
