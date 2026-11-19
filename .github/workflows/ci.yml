@@ -264,6 +264,21 @@ jobs:
           GITLEAKS_ENABLE_COMMENTS: 'false'
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
 
+  # Required by the main branch ruleset.
+  quality-summary:
+    name: Quality and tests
+    needs: [ruff-check, ruff-format, type-check, repository-checks, quality-and-tests, dependency-audit]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require all prerequisite jobs to pass
+        shell: bash
+        env:
+          CI_RESULTS: ${{ toJSON(needs) }}
+        run: jq --exit-status 'length > 0 and all(.[]; .result == "success")' <<< "${CI_RESULTS}"
+
   build:
     name: Docker Build
     runs-on: ubuntu-latest
@@ -547,3 +562,18 @@ jobs:
             "http://127.0.0.1:18080/internal/v1/profiles/${profile_id}"
           test "$(docker exec "${postgres_name}" psql -U profile_test -d profile_test -Atc \
             'SELECT (SELECT count(*) FROM profiles), (SELECT count(*) FROM user_settings), (SELECT count(*) FROM idempotency_records)')" = '1|1|1'
+
+  # Required by the main branch ruleset.
+  docker-summary:
+    name: Docker build and smoke test
+    needs: [build, sast, image-scan, docker]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require all prerequisite jobs to pass
+        shell: bash
+        env:
+          CI_RESULTS: ${{ toJSON(needs) }}
+        run: jq --exit-status 'length > 0 and all(.[]; .result == "success")' <<< "${CI_RESULTS}"
