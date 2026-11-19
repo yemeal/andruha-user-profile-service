@@ -45,7 +45,13 @@ request/response contracts, and verification commands.
 
 ## Liveness and readiness
 
-`GET /health/live` reports that the process is running. `GET /health/ready` reports readiness after application lifespan initialization. It intentionally performs no fake dependency probes.
+`GET /health/live` reports that the process is running and performs no database
+work. `GET /health/ready` requires lifespan initialization, configured JWT
+verification, and bounded PostgreSQL reads of the profile, settings and
+idempotency tables. Database/schema unavailability returns 503; connectivity
+failures on business reads/writes also return a safe 503. Readiness recovers
+after PostgreSQL returns without restarting the API. Redis is an optional hot
+idempotency path and does not determine readiness.
 
 ## Local build and run status
 

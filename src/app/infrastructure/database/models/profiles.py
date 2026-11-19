@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,6 +18,7 @@ from app.infrastructure.database.models.base import Base
 class ProfileORM(Base):
     __tablename__ = "profiles"
     __table_args__ = (
+        UniqueConstraint("username", name="profiles_username_key"),
         CheckConstraint("version > 0", name="ck_profiles_version"),
         CheckConstraint(
             "updated_at IS NULL OR updated_at > created_at",
@@ -41,7 +43,7 @@ class ProfileORM(Base):
     )
 
     user_id: Mapped[UUID] = mapped_column(primary_key=True)
-    username: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
+    username: Mapped[str | None] = mapped_column(String(32))
     display_name: Mapped[str] = mapped_column(String(64))
     bio: Mapped[str | None] = mapped_column(String(255))
     avatar_key: Mapped[str | None] = mapped_column(Text)

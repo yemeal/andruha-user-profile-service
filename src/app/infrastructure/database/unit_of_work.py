@@ -1,34 +1,14 @@
 from types import TracebackType
-from typing import NoReturn, Self
+from typing import Self
 
-from sqlalchemy.exc import DBAPIError, DisconnectionError, SQLAlchemyError, TimeoutError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncSessionTransaction
 
-from app.application.exceptions.persistence import (
-    PersistenceUnavailableError,
-    TransactionConflictError,
-)
+from app.infrastructure.database.errors import raise_persistence_error
 from app.infrastructure.exceptions.database import (
     NestedTransactionNotAllowedError,
     TransactionNotStartedError,
 )
-
-
-def _raise_persistence_error(error: SQLAlchemyError) -> NoReturn:
-    """Переводим только известные ошибки драйвера, не скрывая ошибки SQL/данных."""
-    if isinstance(error, DBAPIError):
-        sqlstate = getattr(error.orig, "sqlstate", None) or getattr(
-            error.orig, "pgcode", None
-        )
-        if sqlstate in {"40001", "40P01"}:
-            raise TransactionConflictError("Concurrent transaction conflict") from error
-        if error.connection_invalidated or (sqlstate and sqlstate.startswith("08")):
-            raise PersistenceUnavailableError(
-                "Database connection unavailable"
-            ) from error
-    if isinstance(error, (DisconnectionError, TimeoutError)):
-        raise PersistenceUnavailableError("Database unavailable") from error
-    raise error
 
 
 class SqlAlchemyUnitOfWork:
@@ -44,8 +24,8 @@ class SqlAlchemyUnitOfWork:
         transaction = self._session.begin()
         try:
             await transaction.__aenter__()
-        except SQLAlchemyError as error:
-            _raise_persistence_error(error)
+        except (SQLAlchemyError, OSError) as error:
+            raise_persistence_error(error)
         self._transaction = transaction
         return self
 
@@ -62,9 +42,9 @@ class SqlAlchemyUnitOfWork:
             # SQLAlchemy commits success and rolls back every BaseException,
             # including asyncio.CancelledError.
             await transaction.__aexit__(exc_type, exc_val, exc_tb)
-        except SQLAlchemyError as error:
-            _raise_persistence_error(error)
+        except (SQLAlchemyError, OSError) as error:
+            raise_persistence_error(error)
         finally:
             self._transaction = None
-        if isinstance(exc_val, SQLAlchemyError):
-            _raise_persistence_error(exc_val)
+        if isinstance(exc_val, (SQLAlchemyError, OSError)):
+            raise_persistence_error(exc_val)

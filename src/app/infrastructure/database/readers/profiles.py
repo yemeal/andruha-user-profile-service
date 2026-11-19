@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.aggregates.profiles import UserProfile
 from app.domain.value_objects.username import Username
+from app.infrastructure.database.errors import database_errors
 from app.infrastructure.database.models.profiles import ProfileORM
 from app.infrastructure.database.readers.base import BasePostgresReader
 
@@ -18,15 +19,18 @@ class PostgresProfileReader(BasePostgresReader[UserProfile]):
         )
 
     async def get_by_username(self, username: Username | str) -> UserProfile | None:
-        row = (
-            (
-                await self._session.execute(
-                    select(self._table).where(
-                        self._table.c.username == Username(username)
+        with database_errors():
+            row = (
+                (
+                    await self._session.execute(
+                        select(self._table).where(
+                            self._table.c.username == Username(username)
+                        )
                     )
                 )
+                .mappings()
+                .one_or_none()
             )
-            .mappings()
-            .one_or_none()
-        )
-        return self._aggregate.model_validate(dict(row)) if row is not None else None
+            return (
+                self._aggregate.model_validate(dict(row)) if row is not None else None
+            )

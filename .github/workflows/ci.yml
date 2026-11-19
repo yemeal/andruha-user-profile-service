@@ -485,6 +485,8 @@ jobs:
           headers_file="$(mktemp)"
           live_body="$(mktemp)"
           ready_body="$(mktemp)"
+          jwt_private_key="$(mktemp)"
+          jwt_public_key="$(mktemp)"
 
           cleanup() {
             exit_code=$?
@@ -495,10 +497,16 @@ jobs:
             fi
             docker rm --force --volumes "${container_name}" "${postgres_name}" "${valkey_name}" >/dev/null 2>&1 || true
             docker network rm "${network_name}" >/dev/null 2>&1 || true
-            rm -f "${headers_file}" "${live_body}" "${ready_body}"
+            rm -f "${headers_file}" "${live_body}" "${ready_body}" "${jwt_private_key}" "${jwt_public_key}"
             exit "${exit_code}"
           }
           trap cleanup EXIT
+
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+            -out "${jwt_private_key}"
+          openssl rsa -pubout -in "${jwt_private_key}" -out "${jwt_public_key}"
+          rm -f "${jwt_private_key}"
+          chmod 0644 "${jwt_public_key}"
 
           docker network create "${network_name}" >/dev/null
           docker run --detach --name "${postgres_name}" --network "${network_name}" \
@@ -526,6 +534,8 @@ jobs:
           docker run --detach \
             --name "${container_name}" \
             --publish "127.0.0.1:18080:${service_port}" \
+            --mount "type=bind,source=${jwt_public_key},target=/run/configs/identity_jwt_public_key,readonly" \
+            --env 'JWT_PUBLIC_KEYS={"identity-v1":"/run/configs/identity_jwt_public_key"}' \
             "${service_args[@]}" \
             "${IMAGE_NAME}"
 
